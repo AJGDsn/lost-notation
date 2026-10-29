@@ -390,6 +390,8 @@ def handler_for(store: Store, data_dir: Path, project_root: Path, jobs: JobManag
                     started = jobs.start("Saving copies", lambda: _save_copies(store, data_dir, others if queued else [], sites, jobs))
                     said = ("Saving a complete copy in the background; this page shows how far it has got. A large site takes a while, "
                             "because the archive is asked for one file every few seconds.") if sites else f"Saving {queued:,} cop{'y' if queued == 1 else 'ies'} in the background."
+                    if sites and all(_copy_finished(data_dir, key) for key in sites):
+                        said = "Looking for missing pictures in the background; this page shows how far it has got."
                     self.redirect("/collection", said if started else "Another job is already running."); return
                 if action == "open":
                     folder = _own_copy(data_dir, keys[0])
@@ -422,6 +424,11 @@ def _copies_result(store: Store, keys: list[str]) -> str:
 
 def _own_copy(data_dir: Path, key: str) -> Optional[Path]:
     return copy_folder(data_dir, key.split(":", 1)[1]) if key.startswith("site:") else None
+
+
+def _copy_finished(data_dir: Path, key: str) -> bool:
+    progress = copy_progress(_own_copy(data_dir, key))
+    return bool(progress) and not progress["waiting"] and not progress["failed"]
 
 
 def _site_copies(data_dir: Path, rows) -> dict[str, dict]:

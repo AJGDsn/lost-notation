@@ -22,7 +22,7 @@ from lost_notation.desk import (
     Item, add_lead_by_hand, adopt_earlier_decisions, copy_status, copy_targets, decide, download_copies, inbox, lead, leads,
     queue_copies, saved_texts, set_aside, stage_counts, update_lead, write_vault_note,
 )
-from lost_notation.desk_ui import review_page, search_page, settled_page
+from lost_notation.desk_ui import _site_copy_buttons, review_page, search_page, settled_page
 from lost_notation.site_copy import copy_folder, copy_progress, copy_site, elsewhere_path, local_path
 from lost_notation.search_plan import add_custom_term, default_selection, load_custom_terms, load_selection, run_commons, save_plan, selection_from_form
 from lost_notation.term_config import load_term_group
@@ -657,6 +657,23 @@ def test_a_copy_stops_politely_and_finishes_later_when_the_archive_asks_to_slow_
     assert "Stopped because the archive asked us to slow down" in said and 60.0 in waits and 120.0 in waits
     assert copy_progress(folder)["waiting"] == 3 and (folder / "index.html").exists()
     assert "6 of 6 files saved" in copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+
+def test_a_finished_copy_that_was_never_searched_can_look_for_missing_pictures(tmp_path: Path):
+    store = Store(tmp_path / "data"); item = kept_site(store, tmp_path); archive = taquigra_archive()
+    folder = copy_folder(tmp_path / "data", "geocities.com/taquigra")
+    def no_mirror(request, timeout=None):
+        if "url=oocities.org" in request.full_url:
+            raise HTTPError(request.full_url, 500, "Server Error", {}, None)
+        return archive(request, timeout)
+    said = copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=no_mirror, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+    assert "4 of 4 files saved" in said and "look for them again later" in said
+    progress = copy_progress(folder); copy = {"progress": progress}
+    assert progress["searched"] == 0 and "value='sitecopy'" in _site_copy_buttons(copy, "") and "Look for missing pictures" in _site_copy_buttons(copy, "")
+    said = copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+    assert "6 of 6 files saved (2 new, 2 found outside the site's own captures)" in said and "again later" not in said
+    progress = copy_progress(folder)
+    assert (progress["searched"], progress["missing"]) == (1, 1) and "sitecopy" not in _site_copy_buttons({"progress": progress}, "")
+    assert 'src="fotos/lost.gif"' in (folder / "index.html").read_text(encoding="latin-1")
 
 def test_web_page_leads_are_saved_and_their_text_extracted(tmp_path: Path):
     store = Store(tmp_path / "data"); key = "url:example.test/my-script"

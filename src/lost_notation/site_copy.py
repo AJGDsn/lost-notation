@@ -182,6 +182,7 @@ def copy_progress(folder: Path) -> Optional[dict[str, int]]:
         "waiting": sum(entry["state"] == "waiting" for entry in files), "pages": sum(is_page(entry) for entry in saved),
         "pictures": sum(is_picture(entry) and not is_page(entry) for entry in saved), "found_elsewhere": sum(bool(entry.get("found")) for entry in saved),
         "missing": len(manifest.get("missing", [])), "left_out": int(manifest.get("left_out", 0)), "front_page": int((folder / "index.html").exists()),
+        "searched": int(bool(manifest.get("searched"))),
     }
 
 
@@ -484,6 +485,8 @@ def copy_site(
         said += f"; {status['failed']:,} could not be saved"
     if status.get("missing"):
         said += f"; {status['missing']:,} pictures the pages show were not found anywhere"
+    if not stopped and not manifest.get("searched"):
+        said += "; the archive could not be asked about missing pictures, so look for them again later"
     if stopped:
         said += f". Stopped because {stopped}; save the complete copy again later to finish it"
     return said + "."

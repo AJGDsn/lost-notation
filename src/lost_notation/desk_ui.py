@@ -456,6 +456,8 @@ def _site_copy_line(copy: dict) -> str:
         extra.append(f"{progress['missing']:,} pictures not found anywhere (listed in the copy)")
     if progress["left_out"]:
         extra.append(f"{progress['left_out']:,} more left out (a very large site)")
+    if not progress["waiting"] and not progress["failed"] and not progress.get("searched"):
+        extra.append("<span class='todo'>missing pictures not looked for yet</span>")
     mark = "<span class='ok'>✓</span>" if not progress["waiting"] and not progress["failed"] else "<span class='todo'>…</span>"
     browse = copy["browse"] + ("index.html" if progress["front_page"] else "_contents.html")
     return (f"<li>{mark} Complete copy: {progress['saved']:,} of {progress['total']:,} files ({progress['pages']:,} pages, {progress['pictures']:,} pictures)"
@@ -466,14 +468,16 @@ def _site_copy_line(copy: dict) -> str:
 def _site_copy_buttons(copy: dict, disabled: str) -> str:
     progress = copy.get("progress")
     folder = "<button class='quiet' name='action' value='open'>Open the folder</button>" if progress else ""
-    if progress and not progress["waiting"] and not progress["failed"]:
-        return folder
     if not progress:
         label = "Save a complete copy"
     elif progress["waiting"]:
         label = f"Finish the copy ({progress['waiting'] + progress['failed']:,} files left)"
-    else:
+    elif progress["failed"]:
         label = f"Try the {progress['failed']:,} failed files again"
+    elif not progress.get("searched"):
+        label = "Look for missing pictures"  # a copy made before this search existed, or whose search could not reach the archive
+    else:
+        return folder
     return f"<button name='action' value='sitecopy' {disabled}>{label}</button>{folder}"
 
 
