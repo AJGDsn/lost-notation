@@ -1,0 +1,23 @@
+# Research vocabulary is data, not program code.  Keep one term per line so
+# additions can be reviewed without changing a source adapter.
+
+commons_chinese:
+  # Shorthand / stenography
+  - 速记
+  - 速記法
+  - 簡式速記
+  # Script reform
+  - 文字改革
+  - 汉字简化
+  - 簡字
+  # Phonetic systems
+  - 注音字母
+  - 注音符號
+  - 國語羅馬字
+  - 拉丁化
+  - 新文字
+  - 拉丁化新文字
+  # Related historical vocabulary
+  - 拼音
+  - 國語運動
+  - 大眾語

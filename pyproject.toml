@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lost-notation"
+version = "0.1.0"
+description = "Preservation-first research pipeline for independently invented notation systems"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+lost-notation = "lost_notation.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lost_notation"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

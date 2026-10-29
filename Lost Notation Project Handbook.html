@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lost Notation Project Handbook</title>
+  <style>
+    :root { --ink:#20252b; --muted:#5d6874; --blue:#155b8f; --pale:#eef5f8; --gold:#b87820; --line:#d8e0e5; --paper:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f2f3f2; color:var(--ink); font:17px/1.62 Georgia, "Times New Roman", serif; }
+    main { max-width:1040px; margin:0 auto; background:var(--paper); min-height:100vh; padding:3.5rem clamp(1.25rem,5vw,4.5rem) 5rem; box-shadow:0 0 35px #22303b18; }
+    h1,h2,h3,nav,table,.eyebrow,.flow,.note,.status { font-family:Segoe UI,Arial,sans-serif; }
+    h1 { font-size:clamp(2.3rem,6vw,4.25rem); line-height:1.02; margin:.2rem 0 .8rem; letter-spacing:-.035em; color:#15364c; }
+    h2 { margin:3rem 0 1rem; padding-bottom:.35rem; border-bottom:2px solid var(--line); color:#15364c; font-size:1.65rem; }
+    h3 { margin:2rem 0 .5rem; color:var(--blue); font-size:1.15rem; }
+    a { color:var(--blue); }
+    code { background:#edf1f3; border-radius:4px; padding:.12rem .35rem; font-size:.88em; overflow-wrap:anywhere; }
+    .eyebrow { color:var(--gold); text-transform:uppercase; letter-spacing:.13em; font-weight:700; font-size:.78rem; }
+    .subtitle { max-width:760px; color:var(--muted); font-size:1.16rem; }
+    .status { display:inline-block; margin:1rem 0 1.7rem; padding:.4rem .7rem; border:1px solid #9bc1d7; border-radius:999px; background:var(--pale); color:#174e70; font-size:.85rem; }
+    nav { background:#16384f; color:white; padding:1rem 1.25rem; border-radius:8px; columns:2; column-gap:2rem; }
+    nav a { color:white; text-decoration:none; display:block; padding:.18rem 0; }
+    nav a:hover { text-decoration:underline; }
+    .quick { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin:1.5rem 0; }
+    .card { border:1px solid var(--line); border-radius:8px; padding:1rem 1.1rem; background:#fbfcfc; }
+    .card strong { display:block; font:700 1rem Segoe UI,Arial,sans-serif; color:#174e70; margin-bottom:.3rem; }
+    .flow { display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; margin:1.25rem 0; }
+    .flow span { background:var(--pale); border:1px solid #b8d0dd; border-radius:5px; padding:.45rem .65rem; font-weight:600; color:#174e70; }
+    .flow b { color:#8e9aa2; }
+    table { width:100%; border-collapse:collapse; font-size:.94rem; margin:1rem 0; }
+    th,td { padding:.72rem .65rem; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); }
+    th { background:#edf3f6; color:#15364c; }
+    td:first-child { width:3.2rem; text-align:center; font-weight:700; color:var(--blue); }
+    .note { border-left:5px solid var(--gold); background:#fff7e9; padding:.8rem 1rem; margin:1.2rem 0; }
+    .good { border-left-color:#4b8a62; background:#eef8f1; }
+    ol li, ul li { margin:.35rem 0; }
+    .path { display:block; margin:.35rem 0; padding:.75rem; background:#182b38; color:#f5f7f8; border-radius:5px; font:14px/1.5 Consolas,monospace; overflow-wrap:anywhere; }
+    .small { color:var(--muted); font-size:.9rem; }
+    #menu table { display:none; }
+    footer { margin-top:4rem; border-top:1px solid var(--line); padding-top:1rem; color:var(--muted); font-size:.9rem; }
+    @media(max-width:720px) { .quick { grid-template-columns:1fr; } nav { columns:1; } table { font-size:.84rem; } th,td { padding:.55rem .35rem; } }
+    @media print { body { background:white; } main { box-shadow:none; padding:1cm; } nav { display:none; } a { color:inherit; } }
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">Field handbook · October 2026</div>
+  <h1>The Lost Notation Project</h1>
+  <p class="subtitle">A practical guide to finding, sifting and preserving independently invented writing systems and related notations.</p>
+  <div class="status">How it works: Search → Review → Leads → Collection</div>
+
+  <nav aria-label="Contents">
+    <a href="#start">1. Start here</a>
+    <a href="#workflow">2. The four stages</a>
+    <a href="#sources">3. Where the program looks</a>
+    <a href="#reviews">4. Decisions and what they do</a>
+    <a href="#storage">5. Where everything is stored</a>
+    <a href="#duplicates">6. Repeats and checkpoints</a>
+    <a href="#trouble">7. Troubleshooting</a>
+    <a href="#limits">8. What is not built yet</a>
+  </nav>
+
+  <section id="start">
+    <h2>1. Start here</h2>
+    <p>Double-click <strong>Lost Notation Project.bat</strong>, or the desktop shortcut. The dashboard opens in your browser. The bar across the top names the four stages in order, with a number beside each showing what is waiting there.</p>
+    <div class="quick">
+      <div class="card"><strong>Follow the suggested step</strong>The home page always says what to do next: review new finds, look at your leads, or run another batch.</div>
+      <div class="card"><strong>Work in small batches</strong>Run a batch, review it, keep the good finds, then run another. What you learn should shape the next search.</div>
+      <div class="card"><strong>Nothing is final</strong>Every decision can be changed later, and nothing found is ever deleted.</div>
+    </div>
+    <div class="note good"><strong>Nothing found is automatically declared a notation project.</strong> The software finds and ranks possible evidence; your review supplies the research judgement.</div>
+    <h3>Using the project from an iPad</h3>
+    <ol>
+      <li>Make sure the PC and iPad are connected to the same private home network.</li>
+      <li>On the PC, double-click <strong>Lost Notation Project - iPad.bat</strong>. The ordinary launcher remains available whenever you want PC-only access.</li>
+      <li>If Windows asks about network access, select <strong>Private networks</strong> only and choose <strong>Allow access</strong>.</li>
+      <li>The PC window displays one or more web addresses and a six-digit access code. Enter an address in Safari on the iPad, then enter the code.</li>
+      <li>Leave the PC and its launcher window running. Press <strong>Ctrl+C</strong> in that window when finished.</li>
+    </ol>
+    <div class="note"><strong>Use one launcher at a time.</strong> iPad mode can be used simultaneously from the PC browser and the iPad, but the ordinary and iPad launchers cannot both occupy the same dashboard port. iPad mode is for the private home network; it is not a public internet service.</div>
+  </section>
+
+  <section id="workflow">
+    <h2>2. The four stages</h2>
+    <div class="flow"><span>1 · Search</span><b>→</b><span>2 · Review</span><b>→</b><span>3 · Leads</span><b>→</b><span>4 · Collection</span></div>
+
+    <h3>1 · Search: what to look for, and where</h3>
+    <p>Tick terms in any of nine languages: English, French, German, Spanish, Portuguese, Italian, Russian, Japanese and Chinese. A yellow box names any language you are leaving out, and one click adds the specialist terms for all of them. Specialist terms (shorthand, sténographie, Kurzschrift, стенография, 速記 …) find the most relevant material; related and broad terms reach further but bring more noise. Type your own term, such as the name of a system or a word you met during review, into <em>Add a term</em>. Phrases such as “I invented” or “selbst entworfen” rank passages higher and are combined with each term on the hand-search checklist.</p>
+    <p>Then tick the sources under <strong>Where to look</strong> (section 3 describes each). <strong>Save and run a batch</strong> runs each ticked automatic source once in the background; everything found goes to Review. Each source also has its own <strong>Run just this now</strong> button, and the home page has <strong>Run a batch now</strong>.</p>
+    <p><strong>Search engines, by hand</strong> is a checklist of your searches, ten at a time, with links to Google and Brave, and to Yandex, Baidu or Yahoo! Japan for Russian, Chinese and Japanese searches. Paste anything worth keeping straight into Leads; it skips Review because you have already judged it.</p>
+
+    <h3>2 · Review: one inbox for everything</h3>
+    <p>Everything the searches find waits here, one at a time: a passage someone wrote, an archived website (one entry per site, however many pages it has, with links to its front page and to everything the Wayback Machine holds), a Commons file (with a preview picture) or a web page. For each, choose <strong>Keep as a lead</strong>, <strong>Too little survives</strong>, <strong>Not relevant</strong> or <strong>Decide later</strong>; the keys K, T, X and L do the same. Use <em>Too little survives</em> for a find that is relevant but too thinly archived to use: it keeps the find, and your note, in its own list instead of throwing it away. An optional note stays with the lead. The filters at the top show one kind at a time, and <strong>Switch to list view</strong> lets you tick several and decide them together.</p>
+    <p>Some sites match a notation word only by accident, such as Neopets “neographics” pages, a Japanese battery shop whose name is also read <em>sokki</em>, or French pinhole photography (<em>sténopé</em>). Sites listed in <code>examples/review-hidden-sites.txt</code> never reach Review. Open that file in Notepad to add one; nothing is deleted.</p>
+
+    <h3>3 · Leads: the holding area</h3>
+    <p>Kept finds wait here with your notes while you look into them. <strong>Add a lead you found yourself</strong> records a web page, or a library, archive or catalogue record that needs a visit or request; catalogue records are never downloaded automatically. When a lead is worth keeping for good, click <strong>Ready for the Collection</strong>; if it turns out not to be, <strong>Not a lead after all</strong>.</p>
+    <p>Two tabs at the top of Leads hold the finds that are not leads. <strong>Too little survives</strong> lists the thin ones with your notes and links for looking further: everything the Wayback Machine holds, the OoCities mirror for a GeoCities site, and a web search for the address. <strong>Set aside as not relevant</strong> lists everything rejected, most recent first, with notes; any of it can be moved to Leads or to Too little survives.</p>
+
+    <h3>4 · Collection: copies and vault notes</h3>
+    <p><strong>Save a complete copy</strong> gives a kept website its own folder in <code>C:\LostNotationData\Site copies</code>: every page, picture and file the Wayback Machine holds for it, from every date it was captured, laid out like the original site, with its links changed so it reads offline. Different captures often hold different pictures, so the copy combines them all: each file comes from its newest good capture, or an older one when that is broken. Pictures the pages show but the archive never captured at the site's own address are then looked for in the archive's captures of the OoCities mirror (for GeoCities sites) and, for pictures kept on other sites, at their own addresses. <code>_contents.html</code> in the folder lists every file, its capture date and where it came from, and any pictures that were not found anywhere.</p>
+    <p>The archive is asked for one file every few seconds, so a site of a few hundred files takes half an hour or so; the Collection page shows how far it has got. If the archive asks us to slow down, the copy stops; <strong>Finish the copy</strong> later carries on where it left off. <strong>Browse your copy</strong> opens it through the dashboard, where its old scripts run but cannot reach the dashboard; <strong>Open the folder</strong> opens it in File Explorer, where <code>index.html</code> is the front page. The vault note links to the copy.</p>
+    <p><strong>Save copies</strong> downloads, slowly and politely in the background, a Commons file's description page and original file, or a web page. The text of each page is extracted automatically, honouring the character set old pages declare (Shift_JIS, KOI8-R, windows-1251 …), and <strong>Read the saved text</strong> shows it. Failed downloads can be tried again.</p>
+    <p><strong>Write vault note</strong> creates a Markdown note for the lead in a <code>Lost Notation</code> folder of your Obsidian vault, with a <code>saved pages</code> subfolder holding one note per saved page. Set the vault folder at the top of the page; until you do, notes go to <code>C:\LostNotationData\Lost Notation Vault</code>. Anything you write under <em>My notes</em> in Obsidian is kept when a note is refreshed. <strong>Mark finished</strong> moves a lead to the Finished list.</p>
+
+    <div class="note"><strong>Earlier decisions were carried over.</strong> Passages marked promising or needing more research on the old Passages screen, and pages pasted in from web searches, are now Leads; passages marked irrelevant are set aside. Sites ticked <em>Checked</em> on the old Discoveries screen wait under <em>Set aside for later</em> in Review.</div>
+    <div class="note"><strong>Recommended rhythm:</strong> favour small, regular search-and-review cycles. What you learn during review should influence the next sources, vocabulary and searches.</div>
+  </section>
+
+  <section id="sources">
+    <h2>3. Where the program looks</h2>
+    <table>
+      <thead><tr><th>Source</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>CONLANG mailing list, 1998–2009</td><td>Reads the independent static mirror of the conlang mailing list, subjects that use your terms first, and pulls out passages where someone describes a system of their own. 25 pages per batch.</td></tr>
+        <tr><td>Zompist forum (Conlangery)</td><td>Reads forum threads, matching subjects first. Paginated threads are grouped, so only the strongest match from a thread reaches Review.</td></tr>
+        <tr><td>Omniglot invented scripts</td><td>Reads Omniglot's pages on constructed scripts and what their makers wrote about them.</td></tr>
+        <tr><td>Wikimedia Commons</td><td>Searches file titles and descriptions for every ticked term in every ticked language, plus the Chinese script-reform list in <code>config/search_terms.yaml</code>. Each term is searched once; ten per batch.</td></tr>
+        <tr><td>Old personal websites (Internet Archive)</td><td>Looks through the archive's index of 22 old free-hosting sites: GeoCities (American and Japanese), Angelfire, Tripod (American and German), FortuneCity, Freewebs, Narod (Russian), Libero and Virgilio (Italian), Wanadoo, Multimania, Lycos and Chez (French), Lycos (German), iG (Brazilian), Republika (Polish), Nifty and Infoseek (Japanese) and others. It matches words in site addresses, not page text, and works through the most promising sections first: <strong>named addresses</strong> (sites whose name begins with a notation word, such as <code>geocities.com/steno…</code>), then <strong>key topic areas</strong> such as GeoCities Athens and Area51, then other areas, and only then whole sites, which will take months. For a one- to two-hour run, double-click <code>Run First Archive Survey.bat</code>.</td></tr>
+        <tr><td>Brave web search</td><td>Automatic text search, each search in its own language. Needs your own paid Brave Search API key; without one it is skipped.</td></tr>
+        <tr><td>Search engines, by hand</td><td>The checklist described in section 2. Free; you do the reading.</td></tr>
+        <tr><td>Libraries and catalogues</td><td>Recorded by hand on the Leads page.</td></tr>
+        <tr><td>Your own files</td><td><strong>Tools → Import</strong> takes HTML, text, Markdown, JSON or JSONL from a file or folder; likely passages go to Review.</td></tr>
+      </tbody>
+    </table>
+    <p>Why is there no free automatic web search? Search engines forbid programs from reading their result pages, so the only permitted automatic route is a paid service such as Brave's. The Internet Archive's index records addresses, not page text, which is why the archive survey looks for notation words in site names.</p>
+  </section>
+
+  <section id="reviews">
+    <h2>4. Decisions and what they do</h2>
+    <ul>
+      <li><strong>Keep as a lead:</strong> moves the find to Leads, with your note. A kept passage is also recorded as promising.</li>
+      <li><strong>Too little survives:</strong> relevant, but too little is archived to use. Kept with your note in its own list under Leads, where it can become a lead if more turns up.</li>
+      <li><strong>Not relevant:</strong> sets it aside: ordinary programming scripts, diaries, established systems, accidental matches. It does not come back to Review, but it is listed, with your note, under Leads → Set aside as not relevant, and can be moved from there.</li>
+      <li><strong>Decide later:</strong> moves it to <em>Set aside for later</em>, at the end of Review.</li>
+      <li><strong>Ready for the Collection</strong>, <strong>Not a lead after all</strong>, <strong>Mark finished</strong>, <strong>Back to Leads</strong> and <strong>Reopen</strong> move a lead between Leads, the Collection and the Finished list.</li>
+    </ul>
+    <p>Scores only set the reading order of passages: a high score means the excerpt contains several selected phrases; it does not prove originality.</p>
+  </section>
+
+  <section id="storage">
+    <h2>5. Where everything is stored</h2>
+    <p><strong>The program and handbook</strong> live in the project folder, wherever you saved it, for example:</p>
+    <span class="path">Documents\Lost Notation Project</span>
+    <p><strong>The working research archive</strong> lives outside OneDrive:</p>
+    <span class="path">C:\LostNotationData</span>
+    <table>
+      <thead><tr><th>Item</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Database</td><td><code>catalogue.sqlite3</code> holds URLs, queues, review decisions, corpus records and provenance.</td></tr>
+        <tr><td>Blobs</td><td><code>blobs\</code> contains preserved raw downloads and derived text, named by content hash. Do not rename individual files.</td></tr>
+        <tr><td>Search plan</td><td><code>query-selection.json</code> records the ticked terms, phrases and sources; <code>custom-terms.json</code> the terms you added; <code>queries.jsonl</code> the hand-search checklist.</td></tr>
+        <tr><td>Site copies</td><td><code>Site copies</code> holds one folder per copied website; <code>_copy.json</code> in each records where every file came from, and <code>_contents.html</code> lists them.</td></tr>
+        <tr><td>Collection settings</td><td><code>desk-settings.json</code> records your Obsidian vault folder. Until you choose one, notes go to <code>Lost Notation Vault</code> in this folder.</td></tr>
+        <tr><td>Survey log</td><td><code>latest-survey.log</code> records the most recent curated archive survey when that launcher is used.</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>Backup warning:</strong> if the project folder is in OneDrive, OneDrive protects the program files, but nothing automatically protects <code>C:\LostNotationData</code>. Back up that entire folder periodically. The database and blob folder belong together.</div>
+  </section>
+
+  <section id="duplicates">
+    <h2>6. Repeats and checkpoints</h2>
+    <p>The project uses several layers of protection against repeated work:</p>
+    <ul>
+      <li>Automatically collected URLs are recorded in a persistent frontier as pending, fetched or failed.</li>
+      <li>A later collection run resumes the pending queue and skips successfully fetched URLs.</li>
+      <li>Downloaded content is stored by SHA-256 hash, so identical bytes share one preserved blob.</li>
+      <li>Corpus documents use their source identity and content hash, allowing genuine changed versions without treating an unchanged import as new.</li>
+      <li>Manual queries, discovery rows and research decisions keep their checked or reviewed state.</li>
+    </ul>
+    <p>Failures are retained rather than silently forgotten. Retrying failed pages or deliberately refreshing completed pages is possible through the command-line controls, but the ordinary menu never does this automatically.</p>
+  </section>
+
+  <section id="trouble">
+    <h2>7. Troubleshooting</h2>
+    <h3>The review page will not open</h3>
+    <p>Keep the black launcher window open. It runs the small local server used by the browser screen. If the tab did not open automatically, use the local address printed in that window. Press <strong>Ctrl+C</strong> in the black window when you are finished.</p>
+    <h3>A collection found no passages</h3>
+    <p>This is not necessarily an error. Pages may contain indexes, navigation or relevant material that does not use the miner's selected vocabulary. Check the collection summary: it separately reports pages collected, failures, passages mined and URLs still queued.</p>
+    <h3>An archive link opens a generic or broken page</h3>
+    <p>Old sites often have captures from after the original page disappeared, blocked embedded resources, redirects, or missing images. Record useful clues and mark the item for more research rather than assuming the project never existed.</p>
+    <h3>The program reports failed pages</h3>
+    <p>A few failures are normal during long-running web research. Sites time out, rate-limit requests and change addresses. The failed URL and error remain recorded for later investigation.</p>
+    <h3>The window closes before you can read an error</h3>
+    <p>Start the project with <strong>Lost Notation Project.bat</strong>, not by double-clicking a Python file. If it still closes, take a screenshot or copy the visible message before rerunning it.</p>
+  </section>
+
+  <section id="limits">
+    <h2>8. What is not built yet</h2>
+    <p>The current system provides searching in nine languages, one review inbox, a holding area for leads, preservation of copies, text extraction, Obsidian notes and transparent passage ranking. The following remain later stages:</p>
+    <ul>
+      <li>automatic image and scanned-PDF OCR;</li>
+      <li>image and attachment harvesting for forum posts;</li>
+      <li>structured catalogue records (author, year, categories) beyond the per-lead vault notes;</li>
+      <li>LLM-assisted classification and metadata extraction;</li>
+      <li>embeddings, similarity clustering and relationship graphs;</li>
+      <li>the finished public catalogue and archive website.</li>
+    </ul>
+    <p>Brown's CONLANG message interface and the CBB forum are deliberately not crawled because their published access rules prohibit automated retrieval in the relevant areas. The <strong>CONLANG mirror</strong> collection card instead uses an independent read-only archive covering September 1998 to April 2009. Later messages still require an authorised export or another permitted source.</p>
+    <div class="note good"><strong>Research principle:</strong> preserve originals, keep provenance, distinguish machine suggestions from human decisions, and never let a later derivative replace the source evidence.</div>
+  </section>
+
+  <footer>
+    Lost Notation Project · Working handbook for the local research prototype.<br>
+    This file is self-contained and may be printed or saved as PDF from the browser.
+  </footer>
+</main></body>
+</html>

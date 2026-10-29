@@ -1,0 +1,68 @@
+# Sites hidden from the Discoveries review page.
+#
+# One address per line. Each hides that address and everything under it, so
+# "geocities.com/steno83" hides every page of that member site (but not
+# "geocities.com/steno834"). Scheme, "www." and capital letters are ignored.
+# A "*" matches any run of characters, e.g. "digilander.libero.it/steno*".
+# Lines starting with "#" are notes. Edits take effect when the page is
+# refreshed; nothing is deleted from the catalogue, so removing a line brings
+# its pages back.
+#
+# Each site below was judged from its archived pages or page names (October
+# 2026): the address matched a notation word, but the site is about something
+# else.
+
+# "neographics": Neopets graphics, guilds and cheat sites
+freewebs.com/neographicsmaker
+freewebs.com/neographicmaker
+freewebs.com/neographics
+freewebs.com/neographics_thatrock
+freewebs.com/neographicspix
+freewebs.com/neographics33
+freewebs.com/neographics23
+freewebs.com/neographicsfx
+freewebs.com/neographicssr
+freewebs.com/neographicz
+freewebs.com/neographx
+freewebs.com/neographixneohelp
+freewebs.com/neographix-extreme
+freewebs.com/neographix13
+freewebs.com/neographix666
+freewebs.com/neograveyard
+members.tripod.com/neographix
+geocities.com/neographicsgirls
+geocities.com/neographics2030
+geocities.com/neograhics4neopets
+geocities.com/neograbber
+# other "neogra" sites: a gerbil home page, a Japanese robot-game fan site,
+# a redirect notice and a PHP mail test
+mitglied.lycos.de/neographics
+geocities.jp/neogratche2
+membres.lycos.fr/neograph
+membres.lycos.fr/neograf
+
+# "sokki": surveying-instrument batteries (測器), not shorthand (速記)
+geocities.jp/sokki_battery
+
+# "ideogramme": contemporary-art essays and an advertising agency
+perso.wanadoo.fr/ideogrammes
+members.tripod.com/ideographik
+
+# "stenop...": sténopé (pinhole) photography
+geocities.com/stenopephotographie
+membres.lycos.fr/stenop6
+
+# "steno" inside a personal name or unrelated site
+geocities.com/stenoglinda
+oocities.org/stenoglinda
+digilander.libero.it/stenoo
+geocities.com/steno83
+
+# "taquigrafas": a Brazilian transcription business, not about the notation
+geocities.com/taquigrafas
+
+# "glyph" and "conscript": role-play guilds and game clans
+chez.com/glyphgr
+geocities.com/glyphrunner
+geocities.com/conscriptscheisse
+geocities.com/conscriptt
