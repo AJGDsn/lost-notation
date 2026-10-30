@@ -21,17 +21,18 @@ import webbrowser
 
 from .corpus import import_corpus
 from .desk import (
-    add_lead_by_hand, adopt_earlier_decisions, copy_status, decide, download_copies, inbox, lead, leads,
-    load_settings, queue_copies, retry_failed_copies, save_settings, saved_texts, set_aside, stage_counts, update_lead, write_vault_note,
+    add_lead_by_hand, add_requested_site, adopt_earlier_decisions, copy_status, decide, download_copies, inbox, lead, leads,
+    load_settings, queue_copies, retry_failed_copies, save_settings, saved_texts, set_aside, stage_counts, update_lead,
 )
 from .desk_ui import (
     THEME, collection_page, filtered, home_page, leads_page, review_list_page, review_page, search_page, settled_page, texts_page, tools_page, web_search_page,
 )
+from .handover import mark_requests_done, open_requests, read_imports, scriptorium_status, sync_notes, update_notes
 from .search_plan import (
     COLLECTORS, QUERY_FILE, SEARCH_SOURCES, SELECTION_FILE, add_custom_term, archive_progress, brave_available, commons_terms,
     languages_covered, lens_terms, load_custom_terms, load_selection, run_batch, save_plan, searched_texts, selection_from_form,
 )
-from .site_copy import COPIES_FOLDER, PAGE_SUFFIXES, copy_folder, copy_progress, copy_site
+from .site_copy import COPIES_FOLDER, MANIFEST, PAGE_SUFFIXES, copy_folder, copy_progress, copy_site, write_lead_file
 from .store import Store
 from .workbench_ui import load_queries
 
@@ -194,6 +195,7 @@ def plan_summary(selection: dict[str, object]) -> dict[str, object]:
 def dashboard(store: Store, jobs: JobManager, message: str = "", data_dir: Optional[Path] = None, project_root: Path = PROJECT_ROOT) -> str:
     selection = query_selection(data_dir / SELECTION_FILE if data_dir else None)
     counts = desk_counts(store, project_root / "examples" / "review-hidden-sites.txt")
+    counts["requests"] = len(open_requests(data_dir)) if data_dir else 0
     return home_page(counts, plan_summary(selection), jobs.snapshot(), message)
 
 
@@ -224,6 +226,7 @@ def handler_for(store: Store, data_dir: Path, project_root: Path, jobs: JobManag
     selection_file = data_dir / SELECTION_FILE
     hidden_file = project_root / "examples" / "review-hidden-sites.txt"
     adopt_earlier_decisions(store)
+    notes_seen: dict = {}
 
     def checklist() -> tuple[list[str], set[str]]:
         queries = load_queries(query_file) if query_file.exists() else []
@@ -289,9 +292,10 @@ def handler_for(store: Store, data_dir: Path, project_root: Path, jobs: JobManag
                 decision = "trace" if path == "/leads/traces" else "rejected"
                 self.send_html(settled_page(set_aside(store, decision), decision, desk_counts(store, hidden_file), message)); return
             if path == "/collection":
-                rows = leads(store, ("collection",))
-                self.send_html(collection_page(rows, {row["item_key"]: copy_status(store, row["item_key"]) for row in rows}, leads(store, ("done",)),
-                                               load_settings(data_dir), desk_counts(store, hidden_file), jobs.snapshot(), message, _site_copies(data_dir, rows))); return
+                problem = "" if jobs.snapshot().get("running") else sync_notes(store, data_dir, notes_seen)
+                rows = leads(store, ("collection",)); finished = leads(store, ("done",))
+                self.send_html(collection_page(rows, {row["item_key"]: copy_status(store, row["item_key"]) for row in rows}, finished, load_settings(data_dir),
+                                               desk_counts(store, hidden_file), jobs.snapshot(), message or problem, _site_copies(data_dir, [*rows, *finished]), _requests(data_dir))); return
             if path == "/collection/text":
                 row = lead(store, query.get("key", [""])[0])
                 if row is None: self.redirect("/collection", "That lead was not found."); return
@@ -373,11 +377,17 @@ def handler_for(store: Store, data_dir: Path, project_root: Path, jobs: JobManag
                     elif action == "trace": update_lead(store, key, notes=first("notes"), decision="trace"); message = "Filed under Too little survives."
                     else: update_lead(store, key, notes=first("notes")); message = "Notes saved."
                 except KeyError: message = "That lead was not found."
-                self.redirect(back, message); return
+                _refresh_lead_file(store, data_dir, key)
+                self.redirect(back, " ".join(filter(None, [message, update_notes(store, data_dir, [key])]))); return
             if path == "/collection/settings":
                 vault = first("vault").strip()
-                if vault: save_settings(data_dir, {"vault": vault})
+                if vault: save_settings(data_dir, {"vault": vault}); notes_seen.clear()
                 self.redirect("/collection", "Vault folder saved." if vault else "Enter a folder path."); return
+            if path == "/collection/request":
+                request = next((request for request in open_requests(data_dir) if request["address"] == first("address")), None)
+                if request is None: self.redirect("/collection", "That request is no longer open."); return
+                started = jobs.start("Saving copies", lambda: _save_copies(store, data_dir, [], [add_requested_site(store, request["address"], request["note"])], jobs))
+                self.redirect("/collection", "Saving a complete copy in the background; this page shows how far it has got." if started else "Another job is already running."); return
             if path in {"/collection/update", "/collection/all"}:
                 action = first("action")
                 keys = [first("key")] if path == "/collection/update" else [row["item_key"] for row in leads(store, ("collection",))]
@@ -399,13 +409,10 @@ def handler_for(store: Store, data_dir: Path, project_root: Path, jobs: JobManag
                     if hasattr(os, "startfile") and ipaddress.ip_address(self.client_address[0]).is_loopback:
                         os.startfile(folder); self.redirect("/collection", "Opened the folder in File Explorer."); return
                     self.redirect("/collection", f"The copy is on the PC, in {folder}"); return
-                if action == "vault":
-                    vault = Path(load_settings(data_dir)["vault"]); written = [write_vault_note(store, key, vault, _own_copy(data_dir, key)) for key in keys]
-                    self.redirect("/collection", f"Wrote {len(written)} note(s) in {vault / 'Lost Notation'}."); return
                 stages = {"done": ("done", "Marked finished."), "back": ("holding", "Moved back to Leads."), "reopen": ("collection", "Reopened.")}
                 if action in stages:
                     for key in keys: update_lead(store, key, stage=stages[action][0])
-                    self.redirect("/collection", stages[action][1]); return
+                    self.redirect("/collection", " ".join(filter(None, [stages[action][1], update_notes(store, data_dir, keys)]))); return
                 self.redirect("/collection", "Unknown action."); return
             if path == "/tools/import":
                 source = Path(first("path")); name = first("name")
@@ -431,12 +438,23 @@ def _copy_finished(data_dir: Path, key: str) -> bool:
     return bool(progress) and not progress["waiting"] and not progress["failed"]
 
 
+def _refresh_lead_file(store: Store, data_dir: Path, key: str) -> None:
+    folder = _own_copy(data_dir, key)
+    if folder is not None and (folder / MANIFEST).exists():
+        write_lead_file(store, key, folder)
+
+
+def _requests(data_dir: Path) -> list[dict]:
+    return [{**request, "progress": copy_progress(copy_folder(data_dir, request["address"]))} for request in open_requests(data_dir)]
+
+
 def _site_copies(data_dir: Path, rows) -> dict[str, dict]:
-    copies = {}
+    copies = {}; imports = read_imports(data_dir)
     for row in rows:
         folder = _own_copy(data_dir, row["item_key"])
         if folder is not None:
-            copies[row["item_key"]] = {"progress": copy_progress(folder), "folder": str(folder), "browse": f"/copies/{quote(folder.name)}/"}
+            copies[row["item_key"]] = {"progress": copy_progress(folder), "folder": str(folder), "browse": f"/copies/{quote(folder.name)}/",
+                                       "taken": scriptorium_status(data_dir, row["item_key"], imports)}
     return copies
 
 
@@ -445,7 +463,9 @@ def _save_copies(store: Store, data_dir: Path, others: list[str], sites: list[st
     for key in sites:
         site = key.split(":", 1)[1]; row = lead(store, key)
         said.append(copy_site(store, key, site, copy_folder(data_dir, site), source=row["source"] if row else "Internet Archive", progress=jobs.progress))
-    return " ".join(said)
+    mark_requests_done(data_dir)
+    said.append(update_notes(store, data_dir, [*others, *sites]))
+    return " ".join(filter(None, said))
 
 
 def _import_result(store: Store, path: Path, name: str) -> str:
@@ -455,6 +475,7 @@ def _import_result(store: Store, path: Path, name: str) -> str:
 def serve(store: Store, data_dir: Path, project_root: Path, port: int = 8765, open_browser: bool = False, lan: bool = False, access_code: Optional[str] = None) -> None:
     jobs = JobManager(); lan_access = LanAccess(access_code) if lan else None
     host = "0.0.0.0" if lan else "127.0.0.1"
+    sync_notes(store, data_dir, {})
     server = ThreadingHTTPServer((host, port), handler_for(store, data_dir, project_root, jobs, lan_access))
     local_url = f"http://127.0.0.1:{port}/"
     if lan_access:

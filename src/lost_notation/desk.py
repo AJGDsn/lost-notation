@@ -153,6 +153,20 @@ def add_lead_by_hand(store: Store, url: str, title: str, notes: str = "", catalo
         return result.rowcount == 1
 
 
+def add_requested_site(store: Store, site: str, note: str = "", asked_by: str = "Requested by Scriptorium") -> str:
+    """Bring a site another project asked for into the Collection, keeping any notes it already has."""
+    key = f"site:{site}"; stamp = now(); listing = f"https://web.archive.org/web/*/{site}/*"
+    with store.connect() as con:
+        con.execute(
+            """INSERT INTO triage(item_key,kind,source,title,url,evidence,details_json,decision,stage,notes,decided_at,updated_at)
+               VALUES(?,'site',?,?,?,'',?,'lead','collection',?,?,?)
+               ON CONFLICT(item_key) DO UPDATE SET decision='lead',stage='collection',
+                 notes=CASE WHEN COALESCE(triage.notes,'')='' THEN excluded.notes ELSE triage.notes END,updated_at=excluded.updated_at""",
+            (key, asked_by, site, listing, json.dumps({"listing": listing, "found_by": asked_by}), note.strip(), stamp, stamp),
+        )
+    return key
+
+
 def leads(store: Store, stages: tuple[str, ...] = ("holding",)):
     marks = ",".join("?" * len(stages))
     with store.connect() as con:
@@ -382,28 +396,37 @@ def _yaml(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Path] = None) -> Path:
+def _write_if_changed(path: Path, text: str) -> None:
+    """A vault may sync to the cloud or be open in Obsidian, so a file is left alone unless it has changed."""
+    body = text.encode("utf-8")
+    if not path.exists() or path.read_bytes() != body:
+        path.write_bytes(body)
+
+
+def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Path] = None, taken: Optional[dict] = None) -> Path:
     """Write (or refresh) a lead's Obsidian note and one note per saved page.
 
     Anything written below the "## My notes" heading in Obsidian is kept when
-    the note is refreshed.
+    the note is refreshed, even if the vault has moved since. ``taken`` is what
+    Scriptorium has taken of this lead, if it has said (see handover.py).
     """
     row = lead(store, key)
     if row is None:
         raise KeyError(key)
     details = json.loads(row["details_json"] or "{}")
     folder = vault / "Lost Notation"; folder.mkdir(parents=True, exist_ok=True)
-    target = Path(row["vault_note"]) if row["vault_note"] else None
+    previous = Path(row["vault_note"]) if row["vault_note"] else None
+    target = previous
     if target is None or target.parent != folder:
         stem = note_name(_plain(row["title"]))
         target = folder / f"{stem}.md"
         if target.exists() and f"lost-notation-key: {_yaml(key)}" not in target.read_text(encoding="utf-8"):
             target = folder / f"{stem} ({hashlib.sha1(key.encode()).hexdigest()[:6]}).md"
     kept = "_Write your own notes here; they are kept when this note is refreshed._\n"
-    if target.exists():
-        existing = target.read_text(encoding="utf-8")
+    for source in (target, previous):
+        existing = source.read_text(encoding="utf-8") if source is not None and source.exists() else ""
         if "\n## My notes\n" in existing:
-            kept = existing.split("\n## My notes\n", 1)[1].lstrip("\n")
+            kept = existing.split("\n## My notes\n", 1)[1].lstrip("\n"); break
 
     where = []
     if row["kind"] == "site":
@@ -417,6 +440,9 @@ def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Pat
         where.append(f"- Address: {row['url']}")
     if row["kind"] == "file":
         where.append(f"- Preview: ![]({commons_thumbnail(row['title'], 800)})")
+    if taken:
+        shelf = f", shelved in {taken['shelf']}" if taken["shelf"] else ""
+        where.append(f"- In Scriptorium: taken {taken['date']}{shelf}" + ("; this copy has changed since." if taken["changed"] else "."))
 
     evidence = ""
     if row["kind"] == "passage" and row["evidence"]:
@@ -434,11 +460,10 @@ def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Pat
             while name.lower() in used:
                 name += " 2"
             used.add(name.lower())
-            (pages_folder / f"{name}.md").write_text(
-                "\n".join(["---", f"source: {_yaml(text['original_url'])}", f"copy: {_yaml(text['url'])}", f"lead: {_yaml('[[' + target.stem + ']]')}", "---", "",
-                           f"# {name}", "", f"From [[{target.stem}]] · original address: {text['original_url']}", "", text["text"], ""]),
-                encoding="utf-8",
-            )
+            _write_if_changed(pages_folder / f"{name}.md", "\n".join([
+                "---", f"source: {_yaml(text['original_url'])}", f"copy: {_yaml(text['url'])}", f"lead: {_yaml('[[' + target.stem + ']]')}", "---", "",
+                f"# {name}", "", f"From [[{target.stem}]] · original address: {text['original_url']}", "", text["text"], "",
+            ]))
             page_links.append(f"- [[{pages_folder.name}/{name}|{name}]]")
     status = copy_status(store, key)
     if row["kind"] == "passage":
@@ -453,6 +478,7 @@ def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Pat
     body = "\n".join([
         "---", f"title: {_yaml(_plain(row['title']))}", f"kind: {_yaml(KIND_NAMES.get(row['kind'], row['kind']))}",
         f"source: {_yaml(row['source'])}", f"found: {row['decided_at'][:10]}", f"status: {_yaml('finished' if row['stage'] == 'done' else 'processing')}",
+        *([f"scriptorium: {_yaml(('changed since taken ' if taken['changed'] else 'taken ') + taken['date'])}"] if taken else []),
         f"lost-notation-key: {_yaml(key)}", "tags: [lost-notation]", "---", "",
         f"# {_plain(row['title'])}", "",
         "## Why it's a lead", "", _plain(row["notes"]) or "_No notes yet._", "",
@@ -462,7 +488,7 @@ def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Pat
         "## Saved copies", "", copies, "", "\n".join(page_links), "",
         "## My notes", "", kept,
     ])
-    target.write_text(body, encoding="utf-8")
+    _write_if_changed(target, body)
     with store.connect() as con:
-        con.execute("UPDATE triage SET vault_note=?,updated_at=? WHERE item_key=?", (str(target), now(), key))
+        con.execute("UPDATE triage SET vault_note=? WHERE item_key=? AND COALESCE(vault_note,'')<>?", (str(target), key, str(target)))
     return target

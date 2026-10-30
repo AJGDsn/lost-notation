@@ -122,6 +122,7 @@ def home_page(counts: dict[str, int], plan: dict[str, object], job: dict[str, ob
     missing_note = f" Not searching: {', '.join(LANGUAGE_NAMES[code] for code in missing)}." if missing else " All nine languages included."
     later_note = f"; {counts.get('later', 0):,} set aside for later" if counts.get("later") else ""
     done_note = f"; {counts.get('done', 0):,} finished" if counts.get("done") else ""
+    done_note += f"; Scriptorium has asked for {counts['requests']:,} more" if counts.get("requests") else ""
     stages = [
         ("1", "Search", f"{len(used)} of 9", f"languages, {len(plan['sources'])} automatic sources ticked.{missing_note}", "/search", "Choose terms and sources"),
         ("2", "Review", f"{counts['waiting']:,}", f"new finds waiting{later_note}. Keep, discard or postpone each one.", "/review", "Start reviewing"),
@@ -440,6 +441,12 @@ def _copy_line(row, status: dict[str, int]) -> str:
     return f"<li>{mark} Copies: {status['fetched']:,} of {status['total']:,} saved{waiting}{failed}; {status['texts']:,} with readable text</li>"
 
 
+def _taken_text(taken: dict) -> str:
+    if taken["changed"]:
+        return f"<span class='todo'>changed since Scriptorium took it on {escape(taken['date'])}</span>"
+    return f"Scriptorium took this on {escape(taken['date'])}"
+
+
 def _site_copy_line(copy: dict) -> str:
     progress = copy.get("progress")
     if not progress:
@@ -458,6 +465,8 @@ def _site_copy_line(copy: dict) -> str:
         extra.append(f"{progress['left_out']:,} more left out (a very large site)")
     if not progress["waiting"] and not progress["failed"] and not progress.get("searched"):
         extra.append("<span class='todo'>missing pictures not looked for yet</span>")
+    if copy.get("taken"):
+        extra.append(_taken_text(copy["taken"]))
     mark = "<span class='ok'>✓</span>" if not progress["waiting"] and not progress["failed"] else "<span class='todo'>…</span>"
     browse = copy["browse"] + ("index.html" if progress["front_page"] else "_contents.html")
     return (f"<li>{mark} Complete copy: {progress['saved']:,} of {progress['total']:,} files ({progress['pages']:,} pages, {progress['pictures']:,} pictures)"
@@ -476,19 +485,36 @@ def _site_copy_buttons(copy: dict, disabled: str) -> str:
         label = f"Try the {progress['failed']:,} failed files again"
     elif not progress.get("searched"):
         label = "Look for missing pictures"  # a copy made before this search existed, or whose search could not reach the archive
+    elif not progress.get("complete"):
+        label = "Finish the copy"  # stopped before its last steps, or made before they existed
     else:
         return folder
     return f"<button name='action' value='sitecopy' {disabled}>{label}</button>{folder}"
 
 
+def _requests_panel(requests: list[dict], disabled: str) -> str:
+    if not requests:
+        return ""
+    rows = []
+    for request in requests:
+        progress = request.get("progress")
+        state = f"{progress['saved']:,} of {progress['total']:,} files saved so far" if progress else "No copy yet"
+        note = f" · {escape(request['note'])}" if request["note"] else ""
+        rows.append(f"""<li><code>{escape(request['address'])}</code>{note} <small class='muted'>· {state}</small>
+        <form method='post' action='/collection/request' style='display:inline;margin-left:.5rem'><input type='hidden' name='address' value='{escape(request['address'], quote=True)}'>
+        <button class='quiet' {disabled} style='padding:.2rem .5rem;font-size:12px'>{'Finish the copy' if progress else 'Save a complete copy'}</button></form></li>""")
+    return (f"<section class='panel'><h2>Requested by Scriptorium</h2><p class='muted'>Scriptorium has asked for a complete copy of these sites. A site of a few hundred files "
+            f"takes half an hour or so; start each when it suits you. A request is marked done when its copy is complete.</p><ul>{''.join(rows)}</ul></section>")
+
+
 def collection_page(rows, statuses: dict[str, dict[str, int]], finished, settings: dict[str, str], counts: dict[str, int],
-                    job: dict[str, object], message: str = "", site_copies: Optional[dict[str, dict]] = None) -> str:
+                    job: dict[str, object], message: str = "", site_copies: Optional[dict[str, dict]] = None, requests: Optional[list[dict]] = None) -> str:
     running = bool(job.get("running")); disabled = "disabled" if running else ""
     site_copies = site_copies or {}
     cards = []
     for row in rows:
         key = row["item_key"]; status = statuses[key]
-        vault = f"<li><span class='ok'>✓ Vault note</span> <code>{escape(row['vault_note'])}</code></li>" if row["vault_note"] else "<li><span class='todo'>No vault note yet</span></li>"
+        vault = f"<li><span class='ok'>✓ Vault note</span> <code>{escape(row['vault_note'])}</code></li>" if row["vault_note"] else "<li class='muted'>A vault note is written when the copies are saved, or when you mark this finished.</li>"
         can_copy = row["kind"] in {"file", "web"}
         copy = site_copies.get(key, {}) if row["kind"] == "site" else None
         copy_line = _site_copy_line(copy) if copy is not None else _copy_line(row, status)
@@ -498,9 +524,10 @@ def collection_page(rows, statuses: dict[str, dict[str, int]], finished, setting
         <ul class='status-list'>{copy_line}{vault}</ul>{text_link}
         <form method='post' action='/collection/update' class='actions'><input type='hidden' name='key' value='{escape(key, quote=True)}'>
         {f"<button name='action' value='copies' {disabled}>Save copies</button>" if can_copy else ''}{_site_copy_buttons(copy, disabled) if copy is not None else ''}{f"<button class='quiet' name='action' value='retry' {disabled}>Try failed copies again</button>" if status['failed'] else ''}
-        <button class='quiet' name='action' value='vault'>{'Refresh' if row['vault_note'] else 'Write'} vault note</button><button class='gold' name='action' value='done'>Mark finished</button><button class='quiet' name='action' value='back'>Back to Leads</button></form></article>""")
+        <button class='gold' name='action' value='done'>Mark finished</button><button class='quiet' name='action' value='back'>Back to Leads</button></form></article>""")
     finished_rows = "".join(
-        f"<li>{escape(row['title'])} <small>{escape(KIND_NAMES.get(row['kind'], row['kind']))}{' · note: ' + escape(row['vault_note']) if row['vault_note'] else ''}</small>"
+        f"<li>{escape(row['title'])} <small>{escape(KIND_NAMES.get(row['kind'], row['kind']))}{' · note: ' + escape(row['vault_note']) if row['vault_note'] else ''}"
+        f"{' · ' + _taken_text(site_copies[row['item_key']]['taken']) if site_copies.get(row['item_key'], {}).get('taken') else ''}</small>"
         f"<form method='post' action='/collection/update' style='display:inline;margin-left:.5rem'><input type='hidden' name='key' value='{escape(row['item_key'], quote=True)}'><button class='quiet' name='action' value='reopen' style='padding:.2rem .5rem;font-size:12px'>Reopen</button></form></li>"
         for row in finished
     )
@@ -508,8 +535,9 @@ def collection_page(rows, statuses: dict[str, dict[str, int]], finished, setting
     <p class='lede'>Good leads are processed here. Each website gets a complete copy on this computer: every page, picture and file the archive holds, in a folder you can browse offline. Commons images and web pages are saved too. The text of every saved page is extracted, and each lead gets a note in your Obsidian vault with a folder of its saved pages.</p>
     <section class='panel'><form method='post' action='/collection/settings' class='actions' style='margin:0'><label for='vault'><strong>Obsidian vault folder</strong></label>
     <input id='vault' type='text' name='vault' value='{escape(settings['vault'], quote=True)}' style='flex:1;min-width:16rem'><button class='quiet'>Save folder</button></form>
-    <p class='muted' style='margin:.5rem 0 0'>Notes go in a “Lost Notation” folder inside it. Anything you write under “My notes” in Obsidian is kept when a note is refreshed.</p></section>
-    <form method='post' action='/collection/all' class='actions'><button name='action' value='copies' {disabled}>Save copies of every lead here</button><button class='quiet' name='action' value='vault'>Write every vault note</button></form>
+    <p class='muted' style='margin:.5rem 0 0'>Each lead's note is written automatically, in a “Lost Notation” folder inside it, once the lead has been processed. Anything you write under “My notes” in Obsidian is kept when a note is updated. Keep this folder somewhere backed up.</p></section>
+    {_requests_panel(requests or [], disabled)}
+    <form method='post' action='/collection/all' class='actions'><button name='action' value='copies' {disabled}>Save copies of every lead here</button></form>
     {''.join(cards) or "<section class='card'><h2>Nothing being processed</h2><p>Send leads here from <a href='/leads'>Leads</a> with “Ready for the Collection”.</p></section>"}
     {f"<details class='panel'><summary>Finished ({len(finished):,})</summary><ul>{finished_rows}</ul></details>" if finished else ''}"""
     return layout("Collection", body, counts, "collection", message, job, refresh=running)

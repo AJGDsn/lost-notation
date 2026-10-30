@@ -19,11 +19,14 @@ from lost_notation.collector import Download, SOURCES, conlang_message_record, h
 from lost_notation.corpus_ui import page as passage_review_page
 from lost_notation.dashboard_ui import JobManager, LanAccess, dashboard, handler_for
 from lost_notation.desk import (
-    Item, add_lead_by_hand, adopt_earlier_decisions, copy_status, copy_targets, decide, download_copies, inbox, lead, leads,
-    queue_copies, saved_texts, set_aside, stage_counts, update_lead, write_vault_note,
+    Item, add_lead_by_hand, add_requested_site, adopt_earlier_decisions, copy_status, copy_targets, decide, download_copies, inbox, lead, leads,
+    queue_copies, save_settings, saved_texts, set_aside, stage_counts, update_lead, write_vault_note,
 )
 from lost_notation.desk_ui import _site_copy_buttons, review_page, search_page, settled_page
-from lost_notation.site_copy import copy_folder, copy_progress, copy_site, elsewhere_path, local_path
+from lost_notation.handover import (
+    mark_requests_done, open_requests, read_imports, read_requests, scriptorium_status, sync_notes, update_notes,
+)
+from lost_notation.site_copy import copy_folder, copy_progress, copy_site, elsewhere_path, find_aliases, load_manifest, local_path, without_mirror_additions
 from lost_notation.search_plan import add_custom_term, default_selection, load_custom_terms, load_selection, run_commons, save_plan, selection_from_form
 from lost_notation.term_config import load_term_group
 
@@ -674,6 +677,254 @@ def test_a_finished_copy_that_was_never_searched_can_look_for_missing_pictures(t
     progress = copy_progress(folder)
     assert (progress["searched"], progress["missing"]) == (1, 1) and "sitecopy" not in _site_copy_buttons({"progress": progress}, "")
     assert 'src="fotos/lost.gif"' in (folder / "index.html").read_text(encoding="latin-1")
+
+def finish_copy(store, item, folder, archive):
+    return copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+
+def test_a_finished_copy_says_so_last_and_carries_its_lead(tmp_path: Path):
+    store = Store(tmp_path / "data"); item = kept_site(store, tmp_path); archive = taquigra_archive(); waits = []
+    folder = copy_folder(tmp_path / "data", "geocities.com/taquigra")
+    def busy(request, timeout=None):
+        if "id_/" in request.full_url and request.full_url.endswith("marti.htm"):
+            raise HTTPError(request.full_url, 429, "Too Many Requests", {}, None)
+        return archive(request, timeout)
+    copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=busy, sleeper=waits.append)
+    manifest = load_manifest(folder)
+    assert "complete" not in manifest and json.loads((folder / "_copy.json").read_text(encoding="utf-8"))["format"] == 1
+    finish_copy(store, item, folder, archive)
+    manifest = load_manifest(folder); stamp = manifest["complete"]
+    assert manifest["format"] == 1 and manifest["searched"] and stamp >= manifest["listed"] and not list(folder.glob("*.tmp"))
+    assert list(json.loads((folder / "_copy.json").read_text(encoding="utf-8")))[0] == "format"
+    row = lead(store, item.key)
+    assert json.loads((folder / "_lead.json").read_text(encoding="utf-8")) == {
+        "format": 1, "lead": item.key, "title": "geocities.com/taquigra", "source": row["source"], "found_by": json.loads(row["details_json"])["found_by"],
+        "notes": "Spanish shorthand society", "decided": row["decided_at"]}
+    # Nothing to do: nothing changes, so a program comparing the marker has nothing to take again.
+    before = (folder / "_copy.json").read_bytes()
+    assert "(0 new" in finish_copy(store, item, folder, archive) and (folder / "_copy.json").read_bytes() == before
+    update_lead(store, item.key, notes="Now with more to say")
+    finish_copy(store, item, folder, archive)
+    assert json.loads((folder / "_lead.json").read_text(encoding="utf-8"))["notes"] == "Now with more to say" and load_manifest(folder)["complete"] == stamp
+
+def test_a_copy_being_changed_is_no_longer_marked_complete(tmp_path: Path):
+    store = Store(tmp_path / "data"); item = kept_site(store, tmp_path); archive = taquigra_archive()
+    folder = copy_folder(tmp_path / "data", "geocities.com/taquigra")
+    finish_copy(store, item, folder, archive); stamp = load_manifest(folder)["complete"]
+    (folder / "marti.htm").unlink(); seen = []
+    def watching(request, timeout=None):
+        if "id_/" in request.full_url:
+            seen.append(load_manifest(folder).get("complete"))
+        return archive(request, timeout)
+    copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=watching, sleeper=lambda s: None)
+    assert seen == [None] and load_manifest(folder)["complete"] > stamp and (folder / "marti.htm").exists()
+
+def test_a_finished_copy_without_the_marker_gets_it_without_asking_the_archive(tmp_path: Path):
+    store = Store(tmp_path / "data"); item = kept_site(store, tmp_path); archive = taquigra_archive()
+    folder = copy_folder(tmp_path / "data", "geocities.com/taquigra")
+    finish_copy(store, item, folder, archive)
+    manifest = load_manifest(folder); del manifest["complete"]; del manifest["format"]
+    (folder / "_copy.json").write_text(json.dumps(manifest), encoding="utf-8"); (folder / "_lead.json").unlink()
+    assert "Finish the copy" in _site_copy_buttons({"progress": copy_progress(folder)}, "")
+    def no_archive(request, timeout=None):
+        raise AssertionError("asked the archive: " + request.full_url)
+    copy_site(store, item.key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=no_archive, sleeper=lambda s: None), opener=no_archive, sleeper=lambda s: None)
+    manifest = load_manifest(folder)
+    assert manifest["complete"] and manifest["format"] == 1 and (folder / "_lead.json").exists() and "sitecopy" not in _site_copy_buttons({"progress": copy_progress(folder)}, "")
+
+OLD_MIRROR_PAGE = ('<!DOCTYPE HTML PUBLIC> \n<meta name="viewport" content="width=device-width">\n<script>var PUpage="1";</script><script src="http://www.oocities.com/js_source/geovck08.js"></script>\n'
+                   '<!-- text above generated by server. PLEASE REMOVE -->\n<HEAD><TITLE>Gone</TITLE></HEAD>\n<body background="fondo.gif">\n'
+                   '<!-- following code added by server. PLEASE REMOVE -->\n<script src="http://us.oocities.com/js_source/div03.js"></script>\n<!-- preceding code added by server. PLEASE REMOVE --><P>Words from the author<IMG SRC="marti.jpg">'
+                   '<P><!-- text below generated by server. PLEASE REMOVE --></object></layer><script src="http://us.i1.yimg.com/mc.js"></script>\n<IMG SRC="http://geo.yahoo.com/serv?s=1" ALT=1>\n\n\n')
+NEW_MIRROR_PAGE = ('<!DOCTYPE HTML PUBLIC>\n<link rel="manifest" href="https://www.oocities.org/geocities-archive/manifest.json">\n<style type="text/css">html { max-width:1630px }</style>\n'
+                   '<script language="JavaScript">document.write(\'<div id="content">\');</script>\n\n<script language="JavaScript" src="https://www.oocities.org/js_source/geovck08.js"></script><!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">\n'
+                   '<HTML><BODY>A page by its author</BODY>\n</HTML>\n</div><style> \n.zoomout { transition: transform 0.5s; }\n</style>\n<script>d.write(\'<div>E-mail: oocities(at gmail dot com)</div>\');d.write(\'<script src="x.js"></script>\');</script>\n\n\n')
+
+def test_mirror_pages_lose_only_what_the_mirror_added():
+    assert without_mirror_additions(OLD_MIRROR_PAGE) == '<HEAD><TITLE>Gone</TITLE></HEAD>\n<body background="fondo.gif"><P>Words from the author<IMG SRC="marti.jpg"><P>'
+    assert without_mirror_additions(NEW_MIRROR_PAGE) == '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">\n<HTML><BODY>A page by its author</BODY>\n</HTML>'
+    assert without_mirror_additions("<html><body>Nothing the mirror added</body></html>") is None
+    # The author's own words before the marker: leave the page alone rather than lose them.
+    assert without_mirror_additions("<p>My own words</p><!-- text above generated by server. PLEASE REMOVE --><p>More</p>") is None
+
+def test_a_page_from_the_mirror_reaches_the_copy_without_the_mirrors_additions(tmp_path: Path):
+    store = Store(tmp_path / "data"); item = kept_site(store, tmp_path); archive = taquigra_archive()
+    folder = copy_folder(tmp_path / "data", "geocities.com/taquigra")
+    archive.listings[("oocities.org/taquigra/", "prefix")].append(("20190603201128", "http://www.oocities.org:80/taquigra/gone.htm", "text/html"))
+    archive.bodies[("20190603201128", "http://www.oocities.org:80/taquigra/gone.htm")] = OLD_MIRROR_PAGE.encode("latin-1")
+    finish_copy(store, item, folder, archive)
+    page = (folder / "gone.htm").read_text(encoding="latin-1")
+    assert page.startswith("<HEAD><TITLE>Gone") and "PLEASE REMOVE" not in page and "oocities" not in page.lower() and "yimg" not in page and "Words from the author" in page
+    assert 'background="https://web.archive.org/web/20190603201128/http://www.geocities.com/taquigra/fondo.gif"' in page  # worked out from the address it stands in for
+    entry = next(entry for entry in load_manifest(folder)["files"] if entry["path"] == "gone.htm")
+    assert entry["found"] == "mirror" and entry["stripped"] is True and entry["as"] == "http://www.geocities.com/taquigra/gone.htm"
+    assert load_manifest(folder)["aliases"] == ["oocities.org/taquigra"]
+    assert 'href="gone.htm"' in (folder / "index.html").read_text(encoding="latin-1")
+    # The page as captured stays in the catalogue.
+    with store.connect() as con:
+        blob = con.execute("SELECT r.blob_sha256 FROM retrievals r JOIN candidates c ON c.id=r.candidate_id WHERE c.url LIKE '%oocities.org%gone.htm'").fetchone()[0]
+    assert b"PLEASE REMOVE" in store.blob(blob)
+
+def small_site(*pages: tuple) -> FakeArchive:
+    site = "http://www.geocities.com:80/member/"
+    return FakeArchive({("geocities.com/member/", "prefix"): [("20050101000000", site + name, "text/html") for name, _ in pages]},
+                       {("20050101000000", site + name): body.encode("latin-1") for name, body in pages})
+
+def test_addresses_the_site_went_by_are_noted_when_several_pages_agree(tmp_path: Path):
+    store = Store(tmp_path / "data"); home = '<a href="http://www.own-domain.test">Own domain</a>'
+    # Only the front page names a page, the others link to the bare address.
+    pages = [("index.html", '<html><a href="http://www.own-domain.test/m1.htm">in</a></html>'), ("m1.htm", f"<html>{home}</html>"), ("a.htm", f"<html>{home}<a href='http://stray.test/b.htm'>x</a></html>"),
+             ("b.htm", f"<html>{home}<a href='http://stray.test/'>x</a></html>"), ("links.htm", "<html><a href='http://friend.test/links.htm'>x</a></html>"),
+             ("c.htm", "<html><a href='http://friend.test/'>x</a></html>"), ("d.htm", "<html><a href='http://friend.test/'>x</a></html>")]
+    archive = small_site(*pages); folder = copy_folder(tmp_path / "data", "geocities.com/member")
+    copy_site(store, "site:geocities.com/member", "geocities.com/member", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+    manifest = load_manifest(folder)
+    # stray.test: a shared name, but only two pages link there. friend.test: three pages, but only an everyday name in common.
+    assert manifest["aliases"] == ["own-domain.test"]
+    assert "http://www.own-domain.test/m1.htm" in (folder / "index.html").read_text(encoding="latin-1")  # noted, not changed
+    assert find_aliases(folder, "geocities.com/member", {"files": []}) == []
+    plain = small_site(("index.html", "<html><a href='m1.htm'>x</a></html>"), ("m1.htm", "<html>y</html>")); folder = copy_folder(tmp_path / "data", "geocities.com/plain")
+    plain.listings[("geocities.com/plain/", "prefix")] = [("20050101000000", "http://www.geocities.com:80/member/" + name, "text/html") for name in ("index.html", "m1.htm")]
+    copy_site(store, "site:geocities.com/plain", "geocities.com/member", folder, cdx=InternetArchiveCdx(opener=plain, sleeper=lambda s: None), opener=plain, sleeper=lambda s: None)
+    assert "aliases" not in load_manifest(folder)
+
+def test_requests_from_another_project_become_copies_and_are_marked_done(tmp_path: Path):
+    data = tmp_path / "data"; store = Store(data); archive = taquigra_archive(); requests = data / "requests.txt"
+    assert read_requests(data) == [] and mark_requests_done(data) == 0
+    requests.write_bytes("﻿# Scriptorium's wish list\r\nhttp://www.GeoCities.com/Taquigra/  Martí's system, á note\r\n\r\ngeocities.com/other\nnot an address\ngeocities.com/old  was wanted [done 2026-10-01]".encode("utf-8"))
+    assert read_requests(data) == [{"address": "geocities.com/taquigra", "note": "Martí's system, á note", "done": ""}, {"address": "geocities.com/other", "note": "", "done": ""},
+                                   {"address": "geocities.com/old", "note": "was wanted", "done": "2026-10-01"}]
+    assert [request["address"] for request in open_requests(data)] == ["geocities.com/taquigra", "geocities.com/other"]
+    key = add_requested_site(store, "geocities.com/taquigra", "Martí's system")
+    row = lead(store, key)
+    assert (row["decision"], row["stage"], row["source"], row["notes"]) == ("lead", "collection", "Requested by Scriptorium", "Martí's system")
+    folder = copy_folder(data, "geocities.com/taquigra")
+    copy_site(store, key, "geocities.com/taquigra", folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+    assert json.loads((folder / "_lead.json").read_text(encoding="utf-8"))["found_by"] == "Requested by Scriptorium"
+    assert mark_requests_done(data) == 1 and mark_requests_done(data) == 0
+    after = requests.read_bytes().decode("utf-8"); today = load_manifest(folder)["complete"][:10]
+    assert after.startswith("# Scriptorium's wish list\r\n") and f"Martí's system, á note [done {today}]\r\n" in after
+    assert "geocities.com/other\n" in after and after.endswith("[done 2026-10-01]\n") and not list(data.glob("*.tmp"))
+    assert [request["address"] for request in open_requests(data)] == ["geocities.com/other"]
+    assert "site:geocities.com/other" not in {row["item_key"] for row in leads(store, ("collection",))}  # the researcher starts each copy
+    # A site already marked as set aside comes back, keeping what was said about it.
+    store.record_discovery_run("internet-archive-cdx-url-regex", {"url": "a.test"}, cdx_payload("http://a.test/steno/"), 1)
+    decide(store, inbox(store, tmp_path / "none.txt")[0], "rejected", "looked thin")
+    add_requested_site(store, "a.test/steno", "wanted after all")
+    row = lead(store, "site:a.test/steno"); assert (row["decision"], row["stage"], row["notes"]) == ("lead", "collection", "looked thin")
+
+def test_a_request_finds_a_site_whatever_the_letter_case(tmp_path: Path):
+    data = tmp_path / "data"; store = Store(data); site = "geocities.com/athens/forum/1234"; real = "http://www.geocities.com:80/Athens/Forum/1234/"
+    (data / "requests.txt").write_text("geocities.com/Athens/Forum/1234 as written\ngeocities.com/athens/forum/1234/ as Scriptorium writes it\n", encoding="utf-8")
+    assert [request["address"] for request in open_requests(data)] == [site]  # one request, not two
+    archive = FakeArchive({(site + "/", "prefix"): [("20050101000000", real, "text/html"), ("20050101000000", real + "Page.HTM", "text/html")]},
+                          {("20050101000000", real): b"<html><a href='Page.HTM'>x</a></html>", ("20050101000000", real + "Page.HTM"): b"<html>y</html>"})
+    folder = copy_folder(data, site)
+    copy_site(store, add_requested_site(store, site), site, folder, cdx=InternetArchiveCdx(opener=archive, sleeper=lambda s: None), opener=archive, sleeper=lambda s: None)
+    assert (folder / "page.htm").exists() and 'href="page.htm"' in (folder / "index.html").read_text(encoding="latin-1")  # fetched under its real capitals
+    assert open_requests(data) == [] and all("[done " in line for line in (data / "requests.txt").read_text(encoding="utf-8").splitlines())
+
+def test_dashboard_shows_requests_and_starts_a_copy_only_when_asked(tmp_path: Path):
+    data = tmp_path / "data"; store = Store(data); jobs = JobManager()
+    (data / "requests.txt").write_text("geocities.com/nothing  <b>Wanted</b> by the translator\n", encoding="utf-8")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(store, data, tmp_path, jobs))
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"; started = []
+    try:
+        with urlopen(base + "/collection", timeout=5) as response:
+            page = response.read().decode("utf-8")
+        assert "Requested by Scriptorium" in page and "&lt;b&gt;Wanted&lt;/b&gt; by the translator" in page and "Save a complete copy" in page
+        assert lead(store, "site:geocities.com/nothing") is None and not jobs.snapshot().get("running")
+        with urlopen(base + "/", timeout=5) as response:
+            assert "Scriptorium has asked for 1 more" in response.read().decode("utf-8")
+        with urlopen(Request(base + "/collection/request", data=urlencode({"address": "geocities.com/elsewhere"}).encode("ascii")), timeout=5) as response:
+            assert "no longer open" in response.read().decode("utf-8")
+        jobs.start = lambda label, operation: started.append(operation) or True
+        with urlopen(Request(base + "/collection/request", data=urlencode({"address": "geocities.com/nothing"}).encode("ascii")), timeout=5) as response:
+            assert "Saving a complete copy" in response.read().decode("utf-8")
+        assert len(started) == 1 and lead(store, "site:geocities.com/nothing") is None  # only when the job runs
+        item = kept_site(store, tmp_path, "geocities.com/taquigra"); folder = copy_folder(data, "geocities.com/taquigra"); archive = taquigra_archive()
+        finish_copy(store, item, folder, archive)
+        data_form = urlencode({"key": item.key, "action": "save", "notes": "Edited on Leads"}).encode("ascii")
+        with urlopen(Request(base + "/leads/update", data=data_form), timeout=5):
+            pass
+        assert json.loads((folder / "_lead.json").read_text(encoding="utf-8"))["notes"] == "Edited on Leads"
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
+
+def test_a_lead_gets_its_note_once_processed_and_keeps_what_was_written_in_it(tmp_path: Path):
+    data = tmp_path / "data"; store = Store(data); item = kept_site(store, tmp_path); archive = taquigra_archive(); vault = tmp_path / "vault"
+    save_settings(data, {"vault": str(vault)})
+    assert update_notes(store, data, [item.key]) == "" and lead(store, item.key)["vault_note"] is None  # nothing processed yet
+    folder = copy_folder(data, "geocities.com/taquigra"); finish_copy(store, item, folder, archive)
+    assert update_notes(store, data, [item.key]) == "Vault note up to date."
+    note = Path(lead(store, item.key)["vault_note"]); pages = sorted((note.parent / f"{note.stem} - saved pages").glob("*.md"))
+    assert note.parent == vault / "Lost Notation" and "Your own copy: [front page]" in note.read_text(encoding="utf-8") and len(pages) == 2
+    assert 'status: "processing"' in note.read_text(encoding="utf-8") and "scriptorium" not in note.read_text(encoding="utf-8").lower()
+    note.write_bytes(note.read_bytes().decode("utf-8").replace("_Write your own notes here; they are kept when this note is refreshed._", "Compare with Martí 1803.").encode("utf-8"))
+    stamps = [(path, path.stat().st_mtime_ns) for path in [note, *pages]]; changed_at = lead(store, item.key)["updated_at"]
+    assert update_notes(store, data, [item.key]) and all(path.stat().st_mtime_ns == stamp for path, stamp in stamps)  # nothing changed, nothing rewritten
+    assert lead(store, item.key)["updated_at"] == changed_at
+    update_lead(store, item.key, stage="done"); update_notes(store, data, [item.key]); body = note.read_text(encoding="utf-8")
+    assert 'status: "finished"' in body and "Compare with Martí 1803." in body and all(path.stat().st_mtime_ns == stamp for path, stamp in stamps[1:])
+    # A new vault folder: the note is written there, with what was written in the old one, which is left as it was.
+    save_settings(data, {"vault": str(tmp_path / "moved")}); assert update_notes(store, data, [item.key])
+    moved = Path(lead(store, item.key)["vault_note"])
+    assert moved.parent == tmp_path / "moved" / "Lost Notation" and "Compare with Martí 1803." in moved.read_text(encoding="utf-8") and note.exists()
+    # A finished lead with nothing to copy gets its note too.
+    add_lead_by_hand(store, "https://library.test/rec/1", "A catalogue record", "Needs a visit", True); key = "url:library.test/rec/1"
+    assert update_notes(store, data, [key]) == ""
+    update_lead(store, key, stage="done"); assert update_notes(store, data, [key]) and "Needs a visit" in Path(lead(store, key)["vault_note"]).read_text(encoding="utf-8")
+    # A vault that cannot be written is reported, not hidden.
+    (tmp_path / "blocked").write_text("not a folder"); save_settings(data, {"vault": str(tmp_path / "blocked")})
+    assert "could not be written" in update_notes(store, data, [key]) and sync_notes(store, data, {}).startswith("The vault could not")
+
+def test_notes_say_what_scriptorium_took_and_when_the_copy_has_changed(tmp_path: Path):
+    data = tmp_path / "data"; store = Store(data); item = kept_site(store, tmp_path); archive = taquigra_archive(); imported = data / "imported.txt"
+    save_settings(data, {"vault": str(tmp_path / "vault")}); seen: dict = {}
+    assert read_imports(data) == {} and scriptorium_status(data, item.key) is None  # no file: nothing said, not "not taken"
+    folder = copy_folder(data, "geocities.com/taquigra"); finish_copy(store, item, folder, archive); update_notes(store, data, [item.key])
+    assert sync_notes(store, data, seen) == "" and seen["imports"] is None
+    note = Path(lead(store, item.key)["vault_note"]); stamp = load_manifest(folder)["complete"]
+    assert "scriptorium" not in note.read_text(encoding="utf-8").lower()
+    imported.write_text(f"site:geocities.com/other\t2026-10-01\tx\tWebsites/other\nnot a line\n{item.key}\t2026-10-01\t2020-01-01T00:00:00\tWebsites/old\n{item.key}\t2026-10-30\t{stamp}\tWebsites/some shelf\n", encoding="utf-8")
+    assert read_imports(data)[item.key] == {"date": "2026-10-30", "complete": stamp, "shelf": "Websites/some shelf"} and len(read_imports(data)) == 2
+    assert sync_notes(store, data, seen) == ""; body = note.read_text(encoding="utf-8")
+    assert 'scriptorium: "taken 2026-10-30"' in body and "- In Scriptorium: taken 2026-10-30, shelved in Websites/some shelf.\n" in body
+    # The copy changes: finishing it again gives a new "complete", and the note flags it straight away.
+    (folder / "marti.htm").unlink(); finish_copy(store, item, folder, archive); assert load_manifest(folder)["complete"] != stamp
+    assert update_notes(store, data, [item.key]); body = note.read_text(encoding="utf-8")
+    assert 'scriptorium: "changed since taken 2026-10-30"' in body and "; this copy has changed since.\n" in body
+    # Scriptorium takes the new copy: the last line for a lead is the current one, and the next sweep notices.
+    with imported.open("a", encoding="utf-8") as handle:
+        handle.write(f"{item.key}\t2026-10-31\t{load_manifest(folder)['complete']}\tWebsites/some shelf\n")
+    assert sync_notes(store, data, seen) == ""; body = note.read_text(encoding="utf-8")
+    assert 'scriptorium: "taken 2026-10-31"' in body and "changed since" not in body
+    assert not list(data.glob("imported*.tmp")) and imported.read_text(encoding="utf-8").count("\n") == 5  # never written by this program
+
+def test_dashboard_writes_notes_when_processing_and_has_no_button_for_it(tmp_path: Path):
+    data = tmp_path / "data"; store = Store(data); item = kept_site(store, tmp_path); archive = taquigra_archive()
+    save_settings(data, {"vault": str(tmp_path / "vault")}); folder = copy_folder(data, "geocities.com/taquigra"); finish_copy(store, item, folder, archive)
+    stamp = load_manifest(folder)["complete"]
+    (data / "imported.txt").write_text(f"{item.key}\t2026-10-30\t{stamp}\tWebsites/x\n", encoding="utf-8")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(store, data, tmp_path, JobManager()))
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urlopen(base + "/collection", timeout=5) as response:
+            page = response.read().decode("utf-8")
+        assert "value='vault'" not in page and "Write every vault note" not in page and "Scriptorium took this on 2026-10-30" in page
+        note = Path(lead(store, item.key)["vault_note"]); assert 'scriptorium: "taken 2026-10-30"' in note.read_text(encoding="utf-8")  # picked up on opening the page
+        with urlopen(Request(base + "/collection/update", data=urlencode({"key": item.key, "action": "done"}).encode("ascii")), timeout=5) as response:
+            page = response.read().decode("utf-8")
+        assert "Marked finished. Vault note up to date." in page and "Scriptorium took this on 2026-10-30" in page  # now on the Finished list
+        assert 'status: "finished"' in note.read_text(encoding="utf-8")
+        with urlopen(Request(base + "/leads/update", data=urlencode({"key": item.key, "action": "save", "notes": "Now with a reason"}).encode("ascii")), timeout=5):
+            pass
+        assert "Now with a reason" in note.read_text(encoding="utf-8")
+        with urlopen(Request(base + "/collection/settings", data=urlencode({"vault": str(tmp_path / "moved")}).encode("ascii")), timeout=5) as response:
+            assert Path(lead(store, item.key)["vault_note"]).parent == tmp_path / "moved" / "Lost Notation"  # the redirect opens the page, which brings the notes across
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
 
 def test_web_page_leads_are_saved_and_their_text_extracted(tmp_path: Path):
     store = Store(tmp_path / "data"); key = "url:example.test/my-script"
