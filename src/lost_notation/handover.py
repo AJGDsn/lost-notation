@@ -28,17 +28,19 @@ REQUESTS_FILE = "requests.txt"
 IMPORTED_FILE = "imported.txt"
 DONE_MARK = re.compile(r"\s*\[done (\d{4}-\d{2}-\d{2})\]\s*$")
 SITE_ADDRESS = re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/[^\s?#]*)?$")
+# Only sites can be asked for. See docs/book-export-design.md for books.
+FILE_ADDRESS = re.compile(r"/(?:wiki/file:|[^/]*\.(?:pdf|djvu?|epub|tiff?|cbz|zip|png|jpe?g|gif)$)")
 
 
 def _parse(line: str) -> Optional[dict[str, str]]:
-    """The request on a line of the file; None for a note, a blank line or anything that is not an address."""
+    """The request on a line of the file; None for a note, a blank line or anything that is not a site's address, such as a book line."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None
     done = DONE_MARK.search(line)
     words = (line[:done.start()] if done else line).split(None, 1)
     address = address_key(words[0]).rstrip("/")
-    if not SITE_ADDRESS.match(address):
+    if words[0].lower().startswith("book:") or FILE_ADDRESS.search(address) or not SITE_ADDRESS.match(address):
         return None
     return {"address": address, "note": words[1].strip() if len(words) > 1 else "", "done": done.group(1) if done else ""}
 

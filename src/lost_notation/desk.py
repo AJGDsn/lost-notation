@@ -21,7 +21,7 @@ import re
 import time
 from typing import Callable, Optional
 from urllib.error import HTTPError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .discovery import address_key, user_agent
@@ -288,6 +288,12 @@ def retry_failed_copies(store: Store, key: str) -> int:
         ).rowcount
 
 
+def _ascii_address(url: str) -> str:
+    """An address as a request must carry it. Saved addresses keep their own letters, as a lead's key is made from them."""
+    parts = urlsplit(url); safe = "%/:;=&?~+!$,'@()*[]"
+    return urlunsplit(parts._replace(path=quote(parts.path, safe=safe), query=quote(parts.query, safe=safe)))
+
+
 def download_copies(
     store: Store, keys: list[str], limit: Optional[int] = None, *, delay_seconds: float = 1.5,
     opener: Callable[..., object] = urlopen, sleeper: Callable[[float], None] = time.sleep,
@@ -306,7 +312,7 @@ def download_copies(
         if index:
             sleeper(delay_seconds)
         try:
-            request = Request(row["url"], headers={"User-Agent": user_agent("preserving a page a researcher selected")})
+            request = Request(_ascii_address(row["url"]), headers={"User-Agent": user_agent("preserving a page a researcher selected")})
             with opener(request, timeout=60) as response:
                 body = response.read(MAX_COPY_BYTES + 1)
                 if len(body) > MAX_COPY_BYTES:

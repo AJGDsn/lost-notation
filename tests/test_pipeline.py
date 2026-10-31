@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from http.cookiejar import CookieJar
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import sqlite3
 import threading
 from urllib.error import HTTPError
@@ -19,7 +19,7 @@ from lost_notation.collector import Download, SOURCES, conlang_message_record, h
 from lost_notation.corpus_ui import page as passage_review_page
 from lost_notation.dashboard_ui import JobManager, LanAccess, dashboard, handler_for
 from lost_notation.desk import (
-    Item, add_lead_by_hand, add_requested_site, adopt_earlier_decisions, copy_status, copy_targets, decide, download_copies, inbox, lead, leads,
+    _ascii_address, Item, add_lead_by_hand, add_requested_site, adopt_earlier_decisions, copy_status, copy_targets, decide, download_copies, inbox, lead, leads,
     queue_copies, save_settings, saved_texts, set_aside, stage_counts, update_lead, write_vault_note,
 )
 from lost_notation.desk_ui import _site_copy_buttons, review_page, search_page, settled_page
@@ -823,6 +823,18 @@ def test_a_request_finds_a_site_whatever_the_letter_case(tmp_path: Path):
     assert (folder / "page.htm").exists() and 'href="page.htm"' in (folder / "index.html").read_text(encoding="latin-1")  # fetched under its real capitals
     assert open_requests(data) == [] and all("[done " in line for line in (data / "requests.txt").read_text(encoding="utf-8").splitlines())
 
+def test_book_lines_and_file_addresses_are_not_offered_as_site_copies(tmp_path: Path):
+    data = tmp_path / "data"; Store(data); requests = data / "requests.txt"
+    ignored = ["book:url:commons.wikimedia.org/wiki/file:example_book.pdf A book already held", "book:https://commons.wikimedia.org/wiki/File:Example_Book.pdf A new one",
+               "BOOK:https://example.org/Some_Book.pdf", "https://commons.wikimedia.org/wiki/File:Example_Book.pdf No prefix", "commons.wikimedia.org/wiki/File:Some Book.pdf",
+               "https://example.org/_Files/Some_Book.PDF", "example.org/scans/page.djvu [done 2026-01-20]"]
+    requests.write_text("\n".join(ignored + ["geocities.com/j.smith/ A member site with a dot in its name", "example.zip"]) + "\n", encoding="utf-8")
+    assert [request["address"] for request in read_requests(data)] == ["geocities.com/j.smith", "example.zip"]
+    folder = copy_folder(data, "geocities.com/j.smith"); folder.mkdir(parents=True); (folder / "_copy.json").write_text(json.dumps({"complete": "2026-01-20T09:30:00+00:00"}), encoding="utf-8")
+    assert mark_requests_done(data) == 1
+    after = requests.read_text(encoding="utf-8").splitlines()
+    assert after[:len(ignored)] == ignored and "[done " in after[-2] and after[-1] == "example.zip"  # what it ignores it leaves as it found it
+
 def test_dashboard_shows_requests_and_starts_a_copy_only_when_asked(tmp_path: Path):
     data = tmp_path / "data"; store = Store(data); jobs = JobManager()
     (data / "requests.txt").write_text("geocities.com/nothing  <b>Wanted</b> by the translator\n", encoding="utf-8")
@@ -933,6 +945,29 @@ def test_web_page_leads_are_saved_and_their_text_extracted(tmp_path: Path):
     page = FakeBody(b"<html><body><p>My own script, invented in 1998</p></body></html>")
     assert download_copies(store, [key], opener=lambda request, timeout: page, sleeper=lambda seconds: None) == (1, 0)
     assert "invented in 1998" in saved_texts(store, key)[0]["text"]
+
+def test_a_commons_file_named_outside_ascii_is_saved_and_keeps_its_address(tmp_path: Path):
+    store = Store(tmp_path / "data"); asked = []
+    store.record_discovery_run("wikimedia-commons", {"srsearch": "速记"}, '{"query":{"search":[{"pageid":9,"title":"File:速记 手册.pdf"}]}}'.encode("utf-8"), 1)
+    item = inbox(store, tmp_path / "none.txt")[0]; decide(store, item, "lead"); update_lead(store, item.key, stage="collection")
+    class Commons(BaseHTTPRequestHandler):
+        def do_GET(self):
+            asked.append(self.path); self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers()
+            self.wfile.write(b"<html><body><p>A scanned book</p></body></html>")
+        def log_message(self, *args):
+            pass
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Commons)
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    def by_way_of_the_test_server(request, timeout):  # a real request, so the real rules for an address apply
+        return urlopen(Request(request.full_url.replace("https://commons.wikimedia.org", f"http://127.0.0.1:{server.server_port}")), timeout=timeout)
+    try:
+        assert queue_copies(store, item.key) == 2
+        assert download_copies(store, [item.key], opener=by_way_of_the_test_server, sleeper=lambda seconds: None) == (2, 0)
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
+    assert asked == ["/wiki/File:%E9%80%9F%E8%AE%B0_%E6%89%8B%E5%86%8C.pdf", "/wiki/Special:FilePath/%E9%80%9F%E8%AE%B0_%E6%89%8B%E5%86%8C.pdf"]
+    assert lead(store, item.key)["url"] == "https://commons.wikimedia.org/wiki/File:速记_手册.pdf"
+    assert _ascii_address("https://例え.test/a%20b/速?q=記&r=1#top") == "https://例え.test/a%20b/%E9%80%9F?q=%E8%A8%98&r=1#top"  # the host and existing escapes stay as they are
 
 def test_copied_addresses_stay_inside_the_copy_folder():
     assert local_path("http://www.geocities.com:80/Taquigra/Fotos/A%20B.JPG", "geocities.com/taquigra") == "fotos/a b.jpg"

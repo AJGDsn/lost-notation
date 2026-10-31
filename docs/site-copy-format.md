@@ -94,6 +94,8 @@ geocities.com/example The author's own site
 
 The address comes first, then optionally a space and a note. Use UTF-8 and end the line with a line break. Lines beginning with `#` are ignored. Only ever append. Letter case does not matter: `geocities.com/athens/forum/1234` and `geocities.com/Athens/Forum/1234` are the same request, the archive's index ignores case too, and each file is fetched under the capitals it was captured with.
 
+Only sites can be asked for. A line beginning `book:`, and the address of a single file such as `example.org/some_book.pdf` or a wiki's `File:` page, is ignored and left as it is. [book-export-design.md](book-export-design.md) has the plan for books.
+
 The request appears on the Collection page under "Requested by Scriptorium", where the researcher starts the copy; nothing starts by itself, because a copy takes half an hour or more of polite requests to the archive. When the copy is complete, this program adds `[done <date>]` to the end of the line:
 
 ```
