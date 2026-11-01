@@ -24,7 +24,7 @@ from lost_notation.desk import (
 )
 from lost_notation.desk_ui import _site_copy_buttons, review_page, search_page, settled_page
 from lost_notation.handover import (
-    mark_requests_done, open_requests, read_imports, read_requests, scriptorium_status, sync_notes, update_notes,
+    mark_requests_done, open_requests, read_imports, read_requests, scriptorium_page, scriptorium_status, sync_notes, update_notes,
 )
 from lost_notation.site_copy import copy_folder, copy_progress, copy_site, elsewhere_path, find_aliases, load_manifest, local_path, without_mirror_additions
 from lost_notation.search_plan import add_custom_term, default_selection, load_custom_terms, load_selection, run_commons, save_plan, selection_from_form
@@ -913,6 +913,26 @@ def test_notes_say_what_scriptorium_took_and_when_the_copy_has_changed(tmp_path:
     assert 'scriptorium: "taken 2026-10-31"' in body and "changed since" not in body
     assert not list(data.glob("imported*.tmp")) and imported.read_text(encoding="utf-8").count("\n") == 5  # never written by this program
 
+def test_a_note_links_to_scriptoriums_page_only_on_an_exact_match(tmp_path: Path, monkeypatch):
+    data = tmp_path / "data"; store = Store(data); item = kept_site(store, tmp_path); site = item.key.split(":", 1)[1]; shelf = "Websites/Una página – Sitio (x)"; roaming = tmp_path / "roaming"
+    first, second, fiction = tmp_path / "Vault", tmp_path / "Second Vault", tmp_path / "Fiction"
+    def add_page(vault, address=site):
+        (vault / shelf).mkdir(parents=True); (vault / shelf / "Una página – Sitio (x).md").write_text(f'---\ntitle: "x"\naddress: "{address}"\n---\n\n# x\n', encoding="utf-8")
+    monkeypatch.setenv("APPDATA", str(roaming))
+    assert scriptorium_page(item.key, shelf) == ""  # Obsidian has no list of vaults here
+    (roaming / "obsidian").mkdir(parents=True); (roaming / "obsidian" / "obsidian.json").write_text(json.dumps({"vaults": {str(index): {"path": str(vault)} for index, vault in enumerate((first, second, fiction))}}), encoding="utf-8")
+    assert scriptorium_page(item.key, shelf) == ""  # not generated yet
+    add_page(fiction, "geocities.com/another"); assert scriptorium_page(item.key, shelf) == ""  # the same name, but another site
+    (first / "Websites").mkdir(parents=True); (first / "Websites" / "Sitio.md").write_text(f'---\naddress: "{site}"\n---\n', encoding="utf-8"); assert scriptorium_page(item.key, "Websites/Sitio") == ""  # not at the shelf's path
+    add_page(second); link = "obsidian://open?vault=Second%20Vault&file=Websites%2FUna%20p%C3%A1gina%20%E2%80%93%20Sitio%20%28x%29%2FUna%20p%C3%A1gina%20%E2%80%93%20Sitio%20%28x%29"
+    assert scriptorium_page(item.key, shelf) == link and scriptorium_page("url:" + site, shelf) == "" and scriptorium_page(item.key, "") == ""
+    save_settings(data, {"vault": str(tmp_path / "notes")}); folder = copy_folder(data, site); finish_copy(store, item, folder, taquigra_archive()); stamp = load_manifest(folder)["complete"]
+    (data / "imported.txt").write_text(f"{item.key}\t2026-10-30\t{stamp}\t{shelf}\n", encoding="utf-8")
+    assert update_notes(store, data, [item.key]); note = Path(lead(store, item.key)["vault_note"])
+    assert f"- In Scriptorium: taken 2026-10-30, shelved in [{shelf}]({link}).\n" in note.read_text(encoding="utf-8")
+    add_page(first); assert scriptorium_page(item.key, shelf) == ""  # two vaults have it: no guessing
+    assert update_notes(store, data, [item.key]) and f"shelved in {shelf}.\n" in note.read_text(encoding="utf-8")
+
 def test_dashboard_writes_notes_when_processing_and_has_no_button_for_it(tmp_path: Path):
     data = tmp_path / "data"; store = Store(data); item = kept_site(store, tmp_path); archive = taquigra_archive()
     save_settings(data, {"vault": str(tmp_path / "vault")}); folder = copy_folder(data, "geocities.com/taquigra"); finish_copy(store, item, folder, archive)
@@ -945,6 +965,22 @@ def test_web_page_leads_are_saved_and_their_text_extracted(tmp_path: Path):
     page = FakeBody(b"<html><body><p>My own script, invented in 1998</p></body></html>")
     assert download_copies(store, [key], opener=lambda request, timeout: page, sleeper=lambda seconds: None) == (1, 0)
     assert "invented in 1998" in saved_texts(store, key)[0]["text"]
+
+def test_double_brackets_in_saved_text_read_as_written_but_do_not_link(tmp_path: Path):
+    store = Store(tmp_path / "data"); key = "url:example.test/template"; vault = tmp_path / "vault"; corpus = tmp_path / "one.jsonl"
+    add_lead_by_hand(store, "https://example.test/template", "A template"); update_lead(store, key, stage="collection", notes="Compare [[Another lead]]"); queue_copies(store, key)
+    page = FakeBody(b"<html><body><p>My [[LANGUAGE]] by [[Your Email Address]], see [[[x]]] and a[1]</p><p>Here a[b[1]] and a lone [[ cannot link</p></body></html>")
+    download_copies(store, [key], opener=lambda request, timeout: page, sleeper=lambda seconds: None)
+    note = write_vault_note(store, key, vault); saved = next((note.parent / f"{note.stem} - saved pages").glob("*.md")).read_text(encoding="utf-8")
+    assert r"My \[\[LANGUAGE\]\] by \[\[Your Email Address\]\], see \[\[\[x\]\]\] and a[1]" in saved
+    assert "Here a[b[1]] and a lone [[ cannot link" in saved  # nothing to neutralise, so left exactly as written
+    assert saved.count("[[") == 3 and 'lead: "[[A template]]"' in saved and "From [[A template]] ·" in saved  # those, and the note's own two links to its main page
+    body = note.read_text(encoding="utf-8"); assert "Compare [[Another lead]]" in body and "[[A template - saved pages/" in body  # the researcher's words and the note's links stay links
+    note.write_text(body.replace("_Write your own notes here; they are kept when this note is refreshed._", "See [[My own page]]"), encoding="utf-8")
+    assert "See [[My own page]]" in write_vault_note(store, key, vault).read_text(encoding="utf-8")
+    corpus.write_text('{"id":"one","text":"I invented my shorthand notation [[LANGUAGE]] for rapid writing."}\n'); import_corpus(store, corpus, "fixture")
+    item = inbox(store, tmp_path / "none.txt")[0]; decide(store, item, "lead"); passage = write_vault_note(store, item.key, vault).read_text(encoding="utf-8")
+    assert item.kind == "passage" and r"\[\[LANGUAGE\]\]" in passage and "[[LANGUAGE" not in passage
 
 def test_a_commons_file_named_outside_ascii_is_saved_and_keeps_its_address(tmp_path: Path):
     store = Store(tmp_path / "data"); asked = []

@@ -7,7 +7,8 @@ module adds ``[done <date>]`` to the end of the line.
 
 ``imported.txt`` is that project's record of what it took, one tab-separated line
 per import: lead key, date, the copy's ``complete`` value and where it was shelved.
-A lead's vault note says so, and says when the copy has changed since.
+A lead's vault note says so, says when the copy has changed since, and links to
+that project's page for the site when one exactly matches.
 See docs/site-copy-format.md.
 
 Vault notes are kept up to date from here too: a lead gets one once it has been
@@ -15,9 +16,12 @@ processed through the Collection, and it changes when the lead does.
 """
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 import re
 from typing import Optional
+from urllib.parse import quote
 
 from .desk import copy_status, lead, load_settings, write_vault_note
 from .discovery import address_key
@@ -118,8 +122,41 @@ def scriptorium_status(data_dir: Path, key: str, imports: Optional[dict[str, dic
     return {**taken, "changed": folder is not None and load_manifest(folder).get("complete") != taken["complete"]}
 
 
+def _obsidian_vaults() -> list[Path]:
+    """The vaults Obsidian knows of on this computer."""
+    try:
+        listed = json.loads((Path(os.environ["APPDATA"]) / "obsidian" / "obsidian.json").read_text(encoding="utf-8"))["vaults"]
+        return [Path(vault["path"]) for vault in listed.values()]
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        return []
+
+
+def _names_site(page: Path, site: str) -> bool:
+    try:
+        heading = page.read_text(encoding="utf-8").split("\n---", 1)[0]
+    except (OSError, ValueError):
+        return False
+    return f'\naddress: "{site}"\n' in heading + "\n"
+
+
+def scriptorium_page(key: str, shelf: str) -> str:
+    """The obsidian:// address of Scriptorium's page for a site, or "" unless it is certain.
+
+    imported.txt gives the shelf but not the vault, so each vault is looked in. A page
+    counts only at the shelf's exact path and naming this very site, in exactly one vault.
+    """
+    if not key.startswith("site:") or not shelf:
+        return ""
+    path = f"{shelf}/{shelf.rsplit('/', 1)[-1]}"
+    found = [vault for vault in _obsidian_vaults() if _names_site(vault / f"{path}.md", key.split(":", 1)[1])]
+    return f"obsidian://open?vault={quote(found[0].name, safe='')}&file={quote(path, safe='')}" if len(found) == 1 else ""
+
+
 def write_note(store: Store, data_dir: Path, key: str) -> Path:
-    return write_vault_note(store, key, Path(load_settings(data_dir)["vault"]), _copy_of(data_dir, key), scriptorium_status(data_dir, key))
+    taken = scriptorium_status(data_dir, key)
+    if taken:
+        taken["page"] = scriptorium_page(key, taken["shelf"])
+    return write_vault_note(store, key, Path(load_settings(data_dir)["vault"]), _copy_of(data_dir, key), taken)
 
 
 def _note_is_due(store: Store, data_dir: Path, key: str) -> bool:

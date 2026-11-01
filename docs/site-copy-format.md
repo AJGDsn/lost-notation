@@ -84,6 +84,8 @@ The fields are the lead key, the date, the `complete` value that was imported, a
 
 This program never writes to the file. It reads it to say on the lead's vault note, and on the Collection page, what was taken, and it flags a copy whose `complete` no longer matches. A lead with no line is not taken to be untaken: it just says nothing.
 
+The note links to the site's page with an `obsidian://open` address when exactly one vault known to Obsidian has a page at `<shelf>/<last part of shelf>.md` whose front matter says `address: "<site>"`, with the site written as in `_copy.json`. Otherwise the shelf stays plain text. A page that appears later is linked the next time the notes are brought up to date.
+
 ## Asking for a copy
 
 Append a line to `<data folder>\requests.txt`, creating it if it does not exist:

@@ -398,6 +398,13 @@ def _plain(text: str) -> str:
     parser = _Markdownish(); parser.feed(text or ""); return "".join(parser.parts)
 
 
+def _as_written(text: str) -> str:
+    """Text from a source: its double brackets are its author's, so they read as written and do not link.
+    Only a line where they could form a link is changed."""
+    escape = lambda brackets: "".join("\\" + bracket for bracket in brackets[0])
+    return re.sub(r"^.*\[\[.*\]\].*$", lambda line: re.sub(r"\[\[+|\]\]+", escape, line[0]), text, flags=re.M)
+
+
 def _yaml(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -447,14 +454,14 @@ def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Pat
     if row["kind"] == "file":
         where.append(f"- Preview: ![]({commons_thumbnail(row['title'], 800)})")
     if taken:
-        shelf = f", shelved in {taken['shelf']}" if taken["shelf"] else ""
-        where.append(f"- In Scriptorium: taken {taken['date']}{shelf}" + ("; this copy has changed since." if taken["changed"] else "."))
+        shelf = f"[{taken['shelf']}]({taken['page']})" if taken.get("page") else taken["shelf"]
+        where.append(f"- In Scriptorium: taken {taken['date']}" + (f", shelved in {shelf}" if shelf else "") + ("; this copy has changed since." if taken["changed"] else "."))
 
     evidence = ""
     if row["kind"] == "passage" and row["evidence"]:
-        evidence = "\n".join("> " + line for line in _plain(row["evidence"]).splitlines()) + "\n"
+        evidence = "\n".join("> " + line for line in _as_written(_plain(row["evidence"])).splitlines()) + "\n"
     elif row["kind"] == "site" and row["evidence"]:
-        evidence = f"{details.get('pages', '')} archived pages, including: {row['evidence']}\n"
+        evidence = f"{details.get('pages', '')} archived pages, including: {_as_written(row['evidence'])}\n"
 
     texts = saved_texts(store, key)
     page_links = []
@@ -468,7 +475,7 @@ def write_vault_note(store: Store, key: str, vault: Path, own_copy: Optional[Pat
             used.add(name.lower())
             _write_if_changed(pages_folder / f"{name}.md", "\n".join([
                 "---", f"source: {_yaml(text['original_url'])}", f"copy: {_yaml(text['url'])}", f"lead: {_yaml('[[' + target.stem + ']]')}", "---", "",
-                f"# {name}", "", f"From [[{target.stem}]] · original address: {text['original_url']}", "", text["text"], "",
+                f"# {name}", "", f"From [[{target.stem}]] · original address: {text['original_url']}", "", _as_written(text["text"]), "",
             ]))
             page_links.append(f"- [[{pages_folder.name}/{name}|{name}]]")
     status = copy_status(store, key)
