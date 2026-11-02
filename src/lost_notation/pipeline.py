@@ -1,6 +1,7 @@
 """Independently runnable preservation and extraction stages."""
 from __future__ import annotations
 
+import codecs
 from dataclasses import dataclass
 from html.parser import HTMLParser
 import json
@@ -284,15 +285,30 @@ def fetch(store: Store, limit: int, refresh: bool = False) -> int:
     return count
 
 CHARSET = re.compile(rb"""charset\s*=\s*["']?([A-Za-z0-9_.:-]+)""", re.I)
+# Pages written on Windows use the extra characters of the Windows form of their
+# encoding: Ⅰ, ① and the like in Shift_JIS, which the strict form refuses.
+WINDOWS_FORM = {"shift_jis": "cp932", "shift-jis": "cp932", "sjis": "cp932", "x-sjis": "cp932", "ms_kanji": "cp932", "windows-31j": "cp932",
+                "euc-kr": "cp949", "ks_c_5601-1987": "cp949", "gb2312": "gb18030", "gbk": "gb18030", "big5": "big5hkscs"}
 
 def decode_page(raw: bytes) -> str:
     """Old personal sites declare Shift_JIS, KOI8-R, windows-1251 and so on in a
-    meta tag; honour it, else use UTF-8 if it fits and Windows Latin if not."""
-    declared = CHARSET.search(raw[:4096])
-    for encoding in ([declared.group(1).decode("ascii")] if declared else []) + ["utf-8"]:
+    meta tag; honour it, else use UTF-8 if it fits and Windows Latin if not.
+    A page shown in the Wayback Machine declares UTF-8 for the archive's header
+    before its own declaration, so each one declared is tried in turn. A byte
+    the declared encoding lacks costs only that character, not the page; but
+    a page that wrongly says UTF-8 is usually Windows Latin."""
+    declared = [match.group(1).decode("ascii").lower() for match in CHARSET.finditer(raw[:4096])]
+    attempts = [name for named in declared for name in (named, WINDOWS_FORM.get(named)) if name] + ["utf-8"]
+    for encoding in dict.fromkeys(attempts):
         try:
             return raw.decode(encoding)
         except (LookupError, UnicodeDecodeError):
+            continue
+    for encoding in (WINDOWS_FORM.get(named, named) for named in declared):
+        try:
+            if codecs.lookup(encoding).name != "utf-8":
+                return raw.decode(encoding, errors="replace")
+        except LookupError:
             continue
     return raw.decode("cp1252", errors="replace")
 

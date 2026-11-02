@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import build_opener, HTTPCookieProcessor, Request, urlopen
 
 from lost_notation.discovery import InternetArchiveCdx, parse_cdx_json
-from lost_notation.pipeline import discover_queries, discover_term_group, export_vault, extract, import_jsonl, survey_progress, survey_seed_file
+from lost_notation.pipeline import decode_page, discover_queries, discover_term_group, export_vault, extract, import_jsonl, survey_progress, survey_seed_file
 from lost_notation.review_ui import cdx_rows
 from lost_notation.workbench_ui import load_queries, load_query_languages, page as workbench_page
 from lost_notation.corpus import apply_passage_lens, import_corpus, score_passage
@@ -981,6 +981,17 @@ def test_double_brackets_in_saved_text_read_as_written_but_do_not_link(tmp_path:
     corpus.write_text('{"id":"one","text":"I invented my shorthand notation [[LANGUAGE]] for rapid writing."}\n'); import_corpus(store, corpus, "fixture")
     item = inbox(store, tmp_path / "none.txt")[0]; decide(store, item, "lead"); passage = write_vault_note(store, item.key, vault).read_text(encoding="utf-8")
     assert item.kind == "passage" and r"\[\[LANGUAGE\]\]" in passage and "[[LANGUAGE" not in passage
+
+def test_a_page_is_read_in_its_declared_encoding_even_with_characters_the_strict_form_lacks():
+    japanese = '<html><head><meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS"><title>練習帳Ⅱ</title></head><body>①長い線　②短い線</body></html>'.encode("cp932")
+    assert "練習帳Ⅱ" in decode_page(japanese) and "①長い線　②短い線" in decode_page(japanese)  # Ⅱ and ① are Windows' additions, which strict Shift_JIS refuses
+    assert "毎日〜毎週" in decode_page('<meta charset="Shift_JIS"><p>毎日〜毎週</p>'.encode("shift_jis"))  # a page strict Shift_JIS reads is read as before
+    wayback = b'<html><head><meta charset="utf-8"><script>/* the archive\'s header */</script>' + '<meta http-equiv="Content-Type" content="text/html; charset=SHIFT_JIS"><title>手書きの記号</title>'.encode("cp932")
+    assert "手書きの記号" in decode_page(wayback)  # the page's own declaration, after the archive's
+    stray = '<meta charset="windows-1251"><p>Стенография</p>'.encode("cp1251") + b"\x98"
+    assert "Стенография" in decode_page(stray)  # one byte the encoding lacks no longer turns the whole page into Windows Latin
+    assert "Taquigrafía" in decode_page('<meta charset="utf-8"><p>Taquigrafía</p>'.encode("cp1252"))  # a page wrongly saying UTF-8 is still read as Windows Latin
+    assert "Taquigrafía" in decode_page('<meta charset="no-such-thing"><p>Taquigrafía</p>'.encode("cp1252"))
 
 def test_a_commons_file_named_outside_ascii_is_saved_and_keeps_its_address(tmp_path: Path):
     store = Store(tmp_path / "data"); asked = []
